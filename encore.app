@@ -14,6 +14,7 @@
             "Authorization",
             "Accept",
             "Origin",
+
         ],
     }
 }

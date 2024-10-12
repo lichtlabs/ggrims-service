@@ -29,8 +29,9 @@ type EventWithTicketInputs struct {
 
 // BaseResponse represents a base response
 type BaseResponse[T any] struct {
-	Data    T      `json:"data"`
-	Message string `json:"message"`
+	Data                      T      `json:"data"`
+	Message                   string `json:"message"`
+	AccessControlAllowOrigins string `header:"Access-Control-Allow-Origin"`
 }
 
 // Metadata represents metadata for a response
