@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"time"
 
-	"encore.app/payments"
+	"encore.dev/rlog"
+	"github.com/lichtlabs/ggrims-service/payments"
 )
 
 // Ticket represents a event ticket
@@ -92,15 +92,15 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			log.Println("panic: ", p)
+			rlog.Error("panic: ", p)
 			tx.Rollback()
 			panic(p)
 		}
 		if txErr != nil {
-			log.Println("txErr: ", txErr)
+			rlog.Error("txErr: ", txErr)
 			tx.Rollback()
 		} else {
-			log.Println("commit")
+			rlog.Info("commit")
 			tx.Commit()
 		}
 	}()
@@ -118,7 +118,7 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 		return nil, err
 	}
 
-	log.Println("ticketCount: ", ticketCount)
+	rlog.Info("ticketCount: ", ticketCount)
 
 	if ticketCount < req.TicketAmount {
 		return nil, errors.New("Not enough tickets available")
@@ -178,8 +178,6 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 		}
 		totalPrice += price
 	}
-
-	log.Printf("Exp Date: %s", time.Now().Add(15*time.Minute).Format("2006-01-02"))
 
 	createBillReq, err := payments.CreateBill(ctx, &payments.CreateBillRequest{
 		Title:                 "Ticket purchase",

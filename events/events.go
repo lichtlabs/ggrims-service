@@ -29,9 +29,8 @@ type EventWithTicketInputs struct {
 
 // BaseResponse represents a base response
 type BaseResponse[T any] struct {
-	Data                      T      `json:"data"`
-	Message                   string `json:"message"`
-	AccessControlAllowOrigins string `header:"Access-Control-Allow-Origin"`
+	Data    T      `json:"data"`
+	Message string `json:"message"`
 }
 
 // Metadata represents metadata for a response
@@ -235,7 +234,7 @@ type CreateEventResponse struct {
 
 // CreateEvent creates an event
 //
-//encore:api private method=POST path=/events
+//encore:api auth method=POST path=/events
 func CreateEvent(ctx context.Context, req *CreateEventRequest) (*BaseResponse[*CreateEventResponse], error) {
 	var createdEvent Event
 
@@ -282,7 +281,7 @@ type UpdateEventResponse struct {
 
 // UpdateEvent updates an event
 //
-//encore:api private method=PUT path=/events/:id
+//encore:api auth method=PUT path=/events/:id
 func UpdateEvent(ctx context.Context, id string, req *UpdateEventRequest) (*BaseResponse[*UpdateEventResponse], error) {
 	event := Event{
 		Name:           req.Name,
@@ -325,7 +324,7 @@ type DeleteEventResponse struct {
 
 // DeleteEvent deletes an event
 //
-//encore:api private method=DELETE path=/events/:id
+//encore:api auth method=DELETE path=/events/:id
 func DeleteEvent(ctx context.Context, id string) (*BaseResponse[*DeleteEventResponse], error) {
 	rows, err := eventsDb.Exec(ctx, `
 		DELETE FROM events
