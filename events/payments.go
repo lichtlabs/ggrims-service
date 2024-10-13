@@ -11,7 +11,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 )
 
@@ -104,17 +103,20 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 }
 
 type CallbackRequest struct {
-	ID             string `json:"id"`
-	BillLink       string `json:"bill_link"`
-	BillLinkID     int    `json:"bill_link_id"`
-	BillTitle      string `json:"bill_title"`
-	SenderName     string `json:"sender_name"`
-	SenderBank     string `json:"sender_bank"`
-	SenderEmail    string `json:"sender_email"`
-	Amount         int    `json:"amount"`
-	Status         string `json:"status"`
-	SenderBankType string `json:"sender_bank_type"`
-	CreatedAt      string `json:"created_at"`
+	Data *struct {
+		ID             string `json:"id"`
+		BillLink       string `json:"bill_link"`
+		BillLinkID     int    `json:"bill_link_id"`
+		BillTitle      string `json:"bill_title"`
+		SenderName     string `json:"sender_name"`
+		SenderBank     string `json:"sender_bank"`
+		SenderEmail    string `json:"sender_email"`
+		Amount         int    `json:"amount"`
+		Status         string `json:"status"`
+		SenderBankType string `json:"sender_bank_type"`
+		CreatedAt      string `json:"created_at"`
+	}
+	Token string `json:"token,omitempty"`
 }
 
 type CallbackResponse struct {
@@ -124,46 +126,19 @@ type CallbackResponse struct {
 // Callback is the callback endpoint for flip to hit when a payment data was changed
 //
 //encore:api public raw method=POST path=/payments/callback
-func RawCallback(res http.ResponseWriter, req *http.Request) {
-	log.Println("data", req.FormValue("data"))
-	log.Println("token", req.FormValue("token"))
-	log.Println("Name: ", req.FormValue("sender_name"))
-	log.Println("Bank: ", req.FormValue("sender_bank"))
-	log.Println("Email: ", req.FormValue("sender_email"))
-	log.Println("Amount: ", req.FormValue("amount"))
-	log.Println("Status: ", req.FormValue("status"))
-	log.Println("Bank Type: ", req.FormValue("sender_bank_type"))
-	log.Println("Created At: ", req.FormValue("created_at"))
-	log.Println("Link ID: ", req.FormValue("bill_link_id"))
-
-	billLinkID, err := strconv.Atoi(req.FormValue("bill_link_id"))
+func Callback(res http.ResponseWriter, req *http.Request) {
+	data := req.FormValue("data")
+	// convert data to json
+	var reqs CallbackRequest
+	err := json.Unmarshal([]byte(data), &reqs)
 	if err != nil {
-		log.Println("Error: Error converting bill_link_id to int: ", err)
+		log.Println("Error: Error converting data to json: ", err)
 		return
-	}
-	amount, err := strconv.Atoi(req.FormValue("amount"))
-	if err != nil {
-		log.Println("Error: Error converting amount to int: ", err)
-		return
-	}
-
-	reqs := CallbackRequest{
-		ID:             req.FormValue("id"),
-		BillLink:       req.FormValue("bill_link"),
-		BillLinkID:     billLinkID,
-		BillTitle:      req.FormValue("bill_title"),
-		SenderName:     req.FormValue("sender_name"),
-		SenderBank:     req.FormValue("sender_bank"),
-		SenderEmail:    req.FormValue("sender_email"),
-		Amount:         amount,
-		Status:         req.FormValue("status"),
-		SenderBankType: req.FormValue("sender_bank_type"),
-		CreatedAt:      req.FormValue("created_at"),
 	}
 
 	ctx := context.Background()
 	rollbackTickets := func() {
-		res, err := RollbackTickets(ctx, reqs.BillLinkID)
+		res, err := RollbackTickets(ctx, reqs.Data.BillLinkID)
 		if err != nil {
 			log.Println("Error: Error rolling back tickets: ", err)
 			return
@@ -171,10 +146,10 @@ func RawCallback(res http.ResponseWriter, req *http.Request) {
 		log.Println("Error: Sold Ticket IDs: ", res.Data.TicketIDs)
 	}
 
-	switch reqs.Status {
+	switch reqs.Data.Status {
 	case "SUCCESSFUL":
 		log.Println("Payment successful", req)
-		res, err := ReserveTicket(ctx, reqs.BillLinkID)
+		res, err := ReserveTicket(ctx, reqs.Data.BillLinkID)
 		if err != nil {
 			log.Println("Error: Error reserving ticket: ", err)
 			return
