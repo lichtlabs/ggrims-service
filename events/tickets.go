@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"encore.dev/rlog"
-	"github.com/lichtlabs/ggrims-service/payments"
+	// "github.com/lichtlabs/ggrims-service/payments"
 )
 
 // Ticket represents a event ticket
@@ -26,24 +26,20 @@ type Ticket struct {
 
 type Attendee map[string]string
 
-// ReserveTicketRequest represents a request to buy a ticket
-type ReserveTicketRequest struct {
-	LinkID int `json:"link_id"`
-}
-
 // ReserveTicketResponse represents a response to buy a ticket
 type ReserveTicketResponse struct {
-	TicketIDs []*string `json:"ticket_ids"`
+	TicketIDs []string `json:"ticket_ids"`
 }
 
 // ReserveTicket reserve a ticket handler for payments service to hit
 // when the payment status is SUCCESSFUL
 //
-//encore:api private method=POST path=/events/:id/tickets/reserve
-func ReserveTicket(ctx context.Context, id string, req *ReserveTicketRequest) (*BaseResponse[*ReserveTicketResponse], error) {
+//encore:api private method=POST path=/tickets/reserve/:linkID
+func ReserveTicket(ctx context.Context, linkID int) (*BaseResponse[*ReserveTicketResponse], error) {
 	var err error
 	// Get buy ticket data from memory
-	buyTicketsData := buyTicketData[fmt.Sprintf("reserve:%d", req.LinkID)]
+	buyTicketsData := buyTicketData[fmt.Sprintf("reserve:%d", linkID)]
+	rlog.Info("Buy tickets data (reserve):", buyTicketsData)
 
 	tx, err := eventsDb.Begin(ctx)
 	if err != nil {
@@ -67,11 +63,126 @@ func ReserveTicket(ctx context.Context, id string, req *ReserveTicketRequest) (*
 		return nil, err
 	}
 
-	return nil, nil
+	return &BaseResponse[*ReserveTicketResponse]{
+		Data:    &ReserveTicketResponse{TicketIDs: buyTicketsData.TicketIDs},
+		Message: "Tickets reserved",
+	}, nil
+}
+
+// RollbackTicketsResponse represents a response to buy a ticket
+type RollbackTicketsResponse struct {
+	TicketIDs []string `json:"ticket_ids"`
+}
+
+// RollbackTickets rollback a ticket status to available
+//
+//encore:api private method=POST path=/tickets/rollback/:linkID
+func RollbackTickets(ctx context.Context, linkID int) (*BaseResponse[*RollbackTicketsResponse], error) {
+	var err error
+	// Get buy ticket data from memory
+	buyTicketsData := buyTicketData[fmt.Sprintf("reserve:%d", linkID)]
+	rlog.Info("Buy tickets data (rollback):", buyTicketsData)
+
+	tx, err := eventsDb.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
+
+	query := `
+        UPDATE tickets
+        SET status = 'available'
+        WHERE id = ANY($1)
+    `
+	_, err = tx.Exec(ctx, query, buyTicketsData.TicketIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	return &BaseResponse[*RollbackTicketsResponse]{
+		Data:    &RollbackTicketsResponse{TicketIDs: buyTicketsData.TicketIDs},
+		Message: "Tickets rollbacked",
+	}, nil
+}
+
+// ListTicketsResponse represents a response to list tickets
+type ListTicketsResponse struct {
+	EventID     string    `json:"event_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Price       string    `json:"price"`
+	Benefits    []string  `json:"benefits"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Count       int       `json:"count"`
+}
+
+// ListTickets get distinct tickets by its name
+//
+//encore:api public method=GET path=/events/:id/tickets
+func ListTickets(ctx context.Context, id string) (*BaseResponse[[]*ListTicketsResponse], error) {
+	var tickets []*ListTicketsResponse
+
+	rows, err := eventsDb.Query(ctx, `
+		SELECT DISTINCT ON (name)
+			event_id,
+			name,
+			description,
+			price,
+			benefits,
+			status,
+			created_at,
+			updated_at,
+				COUNT(*)
+				OVER (PARTITION BY name)
+			AS count
+
+		FROM tickets
+		WHERE event_id = $1 AND status = 'available'
+		ORDER BY name, created_at DESC
+	`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var ticket ListTicketsResponse
+
+		if err := rows.Scan(&ticket.EventID, &ticket.Name, &ticket.Description, &ticket.Price, &ticket.Benefits, &ticket.Status, &ticket.CreatedAt, &ticket.UpdatedAt, &ticket.Count); err != nil {
+			return nil, err
+		}
+
+		tickets = append(tickets, &ListTicketsResponse{
+			EventID:     ticket.EventID,
+			Name:        ticket.Name,
+			Description: ticket.Description,
+			Price:       ticket.Price,
+			Benefits:    ticket.Benefits,
+			Status:      ticket.Status,
+			CreatedAt:   ticket.CreatedAt,
+			UpdatedAt:   ticket.UpdatedAt,
+			Count:       ticket.Count,
+		})
+	}
+
+	return &BaseResponse[[]*ListTicketsResponse]{
+		Data:    tickets,
+		Message: "Tickets retrieved successfully",
+	}, nil
+
 }
 
 // BuyTicketRequest represents a request to buy a ticket
 type BuyTicketRequest struct {
+	TicketName   string      `json:"ticket_name"`
 	TicketAmount int         `json:"ticket_amount"`
 	Attendees    []*Attendee `json:"attendees"`
 }
@@ -79,7 +190,7 @@ type BuyTicketRequest struct {
 // BuyTicketResponse represents a response to buy a ticket
 type BuyTicketResponse struct {
 	BuyTicketData
-	payments.CreateBillResponse
+	CreateBillResponse
 }
 
 // BuyTicket buys a ticket
@@ -105,13 +216,16 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 		}
 	}()
 
+	var ticketCount int
+
 	// check tickets count before buying
 	res := tx.QueryRow(ctx, `
 		SELECT count(*) FROM tickets
 		WHERE event_id = $1
 		AND status = 'available'
-	`, id)
-	var ticketCount int
+		AND name = $2
+	`, id, req.TicketName)
+
 	err := res.Scan(&ticketCount)
 	if err != nil {
 		txErr = err
@@ -125,16 +239,17 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 	}
 
 	var tickets []*Ticket
-	ticketIDs := make([]*string, 0, req.TicketAmount)
+	ticketIDs := make([]string, 0, req.TicketAmount)
 
 	rows, err := tx.Query(ctx, `
 		SELECT id, event_id, name, description, price, benefits, status, created_at, updated_at
 		FROM tickets
 		WHERE event_id = $1
 		AND status = 'available'
+		AND name = $3
 		LIMIT $2
 		FOR UPDATE
-	`, id, req.TicketAmount)
+	`, id, req.TicketAmount, req.TicketName)
 
 	if err != nil {
 		txErr = err
@@ -149,7 +264,7 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 			return nil, err
 		}
 		tickets = append(tickets, &ticket)
-		ticketIDs = append(ticketIDs, &ticket.ID)
+		ticketIDs = append(ticketIDs, ticket.ID)
 	}
 
 	if len(tickets) < req.TicketAmount {
@@ -176,15 +291,14 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 			txErr = err
 			return nil, err
 		}
-		totalPrice += price
+		totalPrice += price + 1000 // add 1000 for the payment fee
 	}
 
-	createBillReq, err := payments.CreateBill(ctx, &payments.CreateBillRequest{
-		Title:                 "Ticket purchase",
+	createBillReq, err := CreateBill(ctx, &CreateBillRequest{
+		Title:                 tickets[0].Name,
 		Amount:                totalPrice,
 		Type:                  "SINGLE",
 		ExpiredDate:           time.Now().Add(48 * time.Hour),
-		RedirectURL:           "",
 		IsAddressRequired:     0,
 		IsPhoneNumberRequired: 0,
 	})
@@ -193,11 +307,13 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 		return nil, err
 	}
 
-	buyTicketData[fmt.Sprintf("reserve:%d", createBillReq.LinkID)] = &BuyTicketData{
+	buyTicketData[fmt.Sprintf("reserve:%d", createBillReq.LinkID)] = BuyTicketData{
 		TicketAmount: req.TicketAmount,
 		Attendees:    req.Attendees,
 		TicketIDs:    ticketIDs,
 	}
+
+	rlog.Info("Buy tickets data (buy):", buyTicketData)
 
 	return &BaseResponse[*BuyTicketResponse]{
 		Data: &BuyTicketResponse{
@@ -206,7 +322,7 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 				Attendees:    req.Attendees,
 				TicketIDs:    ticketIDs,
 			},
-			payments.CreateBillResponse{
+			CreateBillResponse{
 				LinkID:                createBillReq.LinkID,
 				LinkURL:               createBillReq.LinkURL,
 				Title:                 createBillReq.Title,
@@ -228,8 +344,8 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 type BuyTicketData struct {
 	TicketAmount int         `json:"ticket_amount"`
 	Attendees    []*Attendee `json:"attendees"`
-	TicketIDs    []*string   `json:"ticket_ids"`
+	TicketIDs    []string    `json:"ticket_ids"`
 }
 
 // in-memory hashmap to store buy ticket data
-var buyTicketData = map[string]*BuyTicketData{}
+var buyTicketData = map[string]BuyTicketData{}

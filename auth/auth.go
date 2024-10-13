@@ -2,11 +2,11 @@ package auth
 
 import (
 	"context"
-	"log"
 	"strings"
 
 	"encore.dev/beta/auth"
 	"encore.dev/beta/errs"
+	"encore.dev/rlog"
 	"github.com/clerkinc/clerk-sdk-go/clerk"
 )
 
@@ -49,7 +49,7 @@ type UserData struct {
 //encore:authhandler
 func (s *Service) AuthHandler(ctx context.Context, token string) (auth.UID, *UserData, error) {
 	// verify the session
-	log.Println("verifying session")
+	rlog.Info("verifying session")
 	sessClaims, err := s.client.VerifyToken(token)
 	if err != nil {
 		return "", nil, &errs.Error{
@@ -76,7 +76,7 @@ func (s *Service) AuthHandler(ctx context.Context, token string) (auth.UID, *Use
 		EmailAddresses:        user.EmailAddresses,
 	}
 
-	log.Println("userData: ", *userData.FirstName, *userData.LastName, userData.EmailAddresses[0].EmailAddress)
+	rlog.Info("userData: ", *userData.FirstName, *userData.LastName, userData.EmailAddresses[0].EmailAddress)
 
 	// check if the user is an admin
 	// by FirstName,EmailAddresses
