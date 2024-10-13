@@ -125,6 +125,8 @@ type CallbackResponse struct {
 //
 //encore:api public raw method=POST path=/payments/callback
 func RawCallback(res http.ResponseWriter, req *http.Request) {
+	log.Println("data", req.FormValue("data"))
+	log.Println("token", req.FormValue("token"))
 	log.Println("Name: ", req.FormValue("sender_name"))
 	log.Println("Bank: ", req.FormValue("sender_bank"))
 	log.Println("Email: ", req.FormValue("sender_email"))
