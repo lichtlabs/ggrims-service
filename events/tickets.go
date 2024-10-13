@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
-
-	"encore.dev/rlog"
 	// "github.com/lichtlabs/ggrims-service/payments"
 )
 
@@ -39,7 +38,7 @@ func ReserveTicket(ctx context.Context, linkID int) (*BaseResponse[*ReserveTicke
 	var err error
 	// Get buy ticket data from memory
 	buyTicketsData := buyTicketData[fmt.Sprintf("reserve:%d", linkID)]
-	rlog.Info("Buy tickets data (reserve):", buyTicketsData)
+	log.Println("Buy tickets data (reserve):", buyTicketsData)
 
 	tx, err := eventsDb.Begin(ctx)
 	if err != nil {
@@ -81,7 +80,7 @@ func RollbackTickets(ctx context.Context, linkID int) (*BaseResponse[*RollbackTi
 	var err error
 	// Get buy ticket data from memory
 	buyTicketsData := buyTicketData[fmt.Sprintf("reserve:%d", linkID)]
-	rlog.Info("Buy tickets data (rollback):", buyTicketsData)
+	log.Println("Buy tickets data (rollback):", buyTicketsData)
 
 	tx, err := eventsDb.Begin(ctx)
 	if err != nil {
@@ -203,15 +202,15 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			rlog.Error("panic: ", p)
+			log.Println("Error: panic: ", p)
 			tx.Rollback()
 			panic(p)
 		}
 		if txErr != nil {
-			rlog.Error("txErr: ", txErr)
+			log.Println("Error: txErr: ", txErr)
 			tx.Rollback()
 		} else {
-			rlog.Info("commit")
+			log.Println("commit")
 			tx.Commit()
 		}
 	}()
@@ -232,7 +231,7 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 		return nil, err
 	}
 
-	rlog.Info("ticketCount: ", ticketCount)
+	log.Println("ticketCount: ", ticketCount)
 
 	if ticketCount < req.TicketAmount {
 		return nil, errors.New("Not enough tickets available")
@@ -313,7 +312,7 @@ func BuyTicket(ctx context.Context, id string, req *BuyTicketRequest) (*BaseResp
 		TicketIDs:    ticketIDs,
 	}
 
-	rlog.Info("Buy tickets data (buy):", buyTicketData)
+	log.Println("Buy tickets data (buy):", buyTicketData)
 
 	return &BaseResponse[*BuyTicketResponse]{
 		Data: &BuyTicketResponse{

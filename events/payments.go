@@ -8,11 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
-
-	"encore.dev/rlog"
 )
 
 type CreateBillRequest struct {
@@ -104,21 +103,17 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 }
 
 type CallbackRequest struct {
-	Data struct {
-		ID             string `json:"id"`
-		LinkID         int    `json:"link_id"`
-		BillLink       string `json:"bill_link"`
-		BillLinkID     int    `json:"bill_link_id"`
-		BillTitle      string `json:"bill_title"`
-		SenderName     string `json:"sender_name"`
-		SenderBank     string `json:"sender_bank"`
-		SenderEmail    string `json:"sender_email"`
-		Amount         int    `json:"amount"`
-		Status         string `json:"status"`
-		SenderBankType string `json:"sender_bank_type"`
-		CreatedAt      string `json:"created_at"`
-	} `json:"data"`
-	Token string `json:"token"`
+	ID             string `json:"id"`
+	BillLink       string `json:"bill_link"`
+	BillLinkID     int    `json:"bill_link_id"`
+	BillTitle      string `json:"bill_title"`
+	SenderName     string `json:"sender_name"`
+	SenderBank     string `json:"sender_bank"`
+	SenderEmail    string `json:"sender_email"`
+	Amount         int    `json:"amount"`
+	Status         string `json:"status"`
+	SenderBankType string `json:"sender_bank_type"`
+	CreatedAt      string `json:"created_at"`
 }
 
 type CallbackResponse struct {
@@ -129,44 +124,44 @@ type CallbackResponse struct {
 //
 //encore:api public method=POST path=/payments/callback
 func Callback(ctx context.Context, req *CallbackRequest) (*CallbackResponse, error) {
-	rlog.Info("Name: ", req.Data.SenderName)
-	rlog.Info("Bank: ", req.Data.SenderBank)
-	rlog.Info("Email: ", req.Data.SenderEmail)
-	rlog.Info("Amount: ", req.Data.Amount)
-	rlog.Info("Status: ", req.Data.Status)
-	rlog.Info("Bank Type: ", req.Data.SenderBankType)
-	rlog.Info("Created At: ", req.Data.CreatedAt)
-	rlog.Info("Link ID: ", req.Data.LinkID)
+	log.Println("Name: ", req.SenderName)
+	log.Println("Bank: ", req.SenderBank)
+	log.Println("Email: ", req.SenderEmail)
+	log.Println("Amount: ", req.Amount)
+	log.Println("Status: ", req.Status)
+	log.Println("Bank Type: ", req.SenderBankType)
+	log.Println("Created At: ", req.CreatedAt)
+	log.Println("Link ID: ", req.BillLinkID)
 
 	rollbackTickets := func() {
-		res, err := RollbackTickets(ctx, req.Data.LinkID)
+		res, err := RollbackTickets(ctx, req.BillLinkID)
 		if err != nil {
-			rlog.Error("Error rolling back tickets: ", err)
+			log.Println("Error: Error rolling back tickets: ", err)
 			return
 		}
-		rlog.Error("Sold Ticket IDs: ", res.Data.TicketIDs)
+		log.Println("Error: Sold Ticket IDs: ", res.Data.TicketIDs)
 	}
 
-	switch req.Data.Status {
+	switch req.Status {
 	case "SUCCESSFUL":
-		rlog.Info("Payment successful", req)
-		res, err := ReserveTicket(ctx, req.Data.LinkID)
+		log.Println("Payment successful", req)
+		res, err := ReserveTicket(ctx, req.BillLinkID)
 		if err != nil {
 			return nil, err
 		}
-		rlog.Info("Sold Ticket IDs: ", res.Data.TicketIDs)
+		log.Println("Sold Ticket IDs: ", res.Data.TicketIDs)
 		break
 	case "FAILED":
-		rlog.Error("Payment failed", req)
+		log.Println("Error: Payment failed", req)
 		rollbackTickets()
 		break
 	case "CANCELLED":
-		rlog.Error("Payment cancelled", req)
+		log.Println("Error: Payment cancelled", req)
 		rollbackTickets()
 		break
 	default:
-		rlog.Error("Unknown payment status", req)
-		rollbackTickets()
+		log.Println("Error: Unknown payment status", req)
+		// rollbackTickets()
 		break
 	}
 
