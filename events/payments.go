@@ -102,21 +102,23 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 	}, nil
 }
 
+type Transaction struct {
+	ID             string `json:"id"`
+	BillLink       string `json:"bill_link"`
+	BillLinkID     int    `json:"bill_link_id"`
+	BillTitle      string `json:"bill_title"`
+	SenderName     string `json:"sender_name"`
+	SenderBank     string `json:"sender_bank"`
+	SenderEmail    string `json:"sender_email"`
+	Amount         int    `json:"amount"`
+	Status         string `json:"status"`
+	SenderBankType string `json:"sender_bank_type"`
+	CreatedAt      string `json:"created_at"`
+}
+
 type CallbackRequest struct {
-	Data *struct {
-		ID             string `json:"id"`
-		BillLink       string `json:"bill_link"`
-		BillLinkID     int    `json:"bill_link_id"`
-		BillTitle      string `json:"bill_title"`
-		SenderName     string `json:"sender_name"`
-		SenderBank     string `json:"sender_bank"`
-		SenderEmail    string `json:"sender_email"`
-		Amount         int    `json:"amount"`
-		Status         string `json:"status"`
-		SenderBankType string `json:"sender_bank_type"`
-		CreatedAt      string `json:"created_at"`
-	}
-	Token string `json:"token,omitempty"`
+	Data  Transaction `json:"data"`
+	Token string      `json:"token,omitempty"`
 }
 
 type CallbackResponse struct {
@@ -127,29 +129,35 @@ type CallbackResponse struct {
 //
 //encore:api public raw method=POST path=/payments/callback
 func Callback(res http.ResponseWriter, req *http.Request) {
-	data := req.FormValue("data")
-	// convert data to json
-	var reqs CallbackRequest
-	err := json.Unmarshal([]byte(data), &reqs)
+	var tx Transaction
+	dataFormValue := req.PostFormValue("data")
+
+	// Unmarshal the JSON string into the struct
+	err := json.Unmarshal([]byte(dataFormValue), &tx)
 	if err != nil {
-		log.Println("Error: Error converting data to json: ", err)
+		fmt.Println("Error unmarshaling JSON:", err)
 		return
 	}
 
+	log.Println("data: ", tx.SenderEmail)
+
 	ctx := context.Background()
 	rollbackTickets := func() {
-		res, err := RollbackTickets(ctx, reqs.Data.BillLinkID)
+		res, err := RollbackTickets(ctx, tx.BillLinkID)
 		if err != nil {
 			log.Println("Error: Error rolling back tickets: ", err)
 			return
 		}
 		log.Println("Error: Sold Ticket IDs: ", res.Data.TicketIDs)
+
+		// drop buy ticket data
+		delete(buyTicketData, fmt.Sprintf("reserve:%d", tx.BillLinkID))
 	}
 
-	switch reqs.Data.Status {
+	switch tx.Status {
 	case "SUCCESSFUL":
-		log.Println("Payment successful", req)
-		res, err := ReserveTicket(ctx, reqs.Data.BillLinkID)
+		log.Println("Payment successful")
+		res, err := ReserveTicket(ctx, tx.BillLinkID)
 		if err != nil {
 			log.Println("Error: Error reserving ticket: ", err)
 			return

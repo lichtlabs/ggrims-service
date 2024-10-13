@@ -7,7 +7,6 @@ import (
 	"log"
 	"strconv"
 	"time"
-	// "github.com/lichtlabs/ggrims-service/payments"
 )
 
 // Ticket represents a event ticket
@@ -24,6 +23,65 @@ type Ticket struct {
 }
 
 type Attendee map[string]string
+
+// CreateTicketRequest represents a request to create a ticket for admin
+type CreateTicketRequest struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Price       string   `json:"price"`
+	Benefits    []string `json:"benefits"`
+	// Amount of tickets to create
+	TicketCount int `json:"ticket_count"`
+}
+
+// CreateTicketResponse represents a response to create a ticket for admin
+type CreateTicketResponse struct {
+	Created int `json:"created"`
+}
+
+// CreateTicket creates tickets for admin in bulk
+//
+//encore:api auth method=POST path=/events/:id/tickets/create
+func CreateTicket(ctx context.Context, id string, req *CreateTicketRequest) (*BaseResponse[*CreateTicketResponse], error) {
+	// Start a transaction
+	tx, err := eventsDb.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure transaction is rolled back in case of a failure
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	for i := 0; i < req.TicketCount; i++ {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO tickets
+				(event_id, name, description, price, benefits)
+			VALUES
+				($1, $2, $3, $4, $5)
+		`, id, req.Name, req.Description, req.Price, req.Benefits)
+
+		if err != nil {
+			// An error occurred, rollback the transaction
+			return nil, err
+		}
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &BaseResponse[*CreateTicketResponse]{
+		Data: &CreateTicketResponse{
+			Created: req.TicketCount,
+		},
+		Message: "Tickets created successfully",
+	}, nil
+}
 
 // ReserveTicketResponse represents a response to buy a ticket
 type ReserveTicketResponse struct {
@@ -61,6 +119,9 @@ func ReserveTicket(ctx context.Context, linkID int) (*BaseResponse[*ReserveTicke
 	if err != nil {
 		return nil, err
 	}
+
+	// drop buy ticket data
+	delete(buyTicketData, fmt.Sprintf("reserve:%d", linkID))
 
 	return &BaseResponse[*ReserveTicketResponse]{
 		Data:    &ReserveTicketResponse{TicketIDs: buyTicketsData.TicketIDs},
