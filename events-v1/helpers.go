@@ -5,13 +5,6 @@ import (
 	"strings"
 )
 
-func baseResponse[T any](data T, message string) *BaseResponse[T] {
-	return &BaseResponse[T]{
-		Data:    data,
-		Message: message,
-	}
-}
-
 // ExtractQuery extracts query from query string
 func extractQuery(query *ListQuery) *ListQuery {
 	if query.Page > 0 {
