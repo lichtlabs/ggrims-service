@@ -1,17 +1,20 @@
-package events
+package eventsv1
 
 import (
 	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"time"
+
+	"encore.dev/beta/errs"
+	"encore.dev/rlog"
+	"github.com/lichtlabs/ggrims-service/events-v1/db"
 )
 
 type CreateBillRequest struct {
@@ -43,9 +46,9 @@ type CreateBillResponse struct {
 //
 //encore:api private method=POST path=/payments
 func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillResponse, error) {
-	createBillEndpoint := fmt.Sprintf("%s/pwf/bill", secrets.FlipApiBaseEndpoint)
+	eb := errs.B()
 
-	// Prepare the data for the POST request
+	createBillEndpoint := fmt.Sprintf("%s/pwf/bill", secrets.FlipApiBaseEndpoint)
 	data := url.Values{}
 	data.Set("title", req.Title)
 	data.Set("amount", fmt.Sprintf("%d", req.Amount))
@@ -58,30 +61,27 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 	encodedCredentials := base64.StdEncoding.EncodeToString([]byte(secrets.FlipApiSecretKey + ":"))
 	reqs, err := http.NewRequest(http.MethodPost, createBillEndpoint, bytes.NewBufferString(data.Encode()))
 	if err != nil {
-		fmt.Println("Error creating request:", err)
-		return nil, errors.New("Error creating request")
+		rlog.Info("Error creating request:", "err", err)
+		return nil, eb.Code(errs.Internal).Msg("Error creating request").Err()
 	}
 
-	// Set the appropriate headers
 	reqs.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	reqs.Header.Set("Authorization", "Basic "+encodedCredentials)
 
-	// Make the request
 	client := &http.Client{}
 	resp, err := client.Do(reqs)
 	if err != nil {
-		fmt.Println("Error making request:", err)
-		return nil, errors.New("Error making request")
+		rlog.Info("Error making request:", "err", err)
+		return nil, eb.Code(errs.Internal).Msg("Error making request").Err()
 	}
 	defer resp.Body.Close()
 
-	// Read and print the response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("Error reading response:", err)
-		return nil, errors.New("Error reading response")
+		rlog.Info("Error reading response:", "err", err)
+		return nil, eb.Code(errs.Internal).Msg("Error reading response").Err()
 	}
-	fmt.Println("Response:", string(body))
+	rlog.Info("Response:", string(body))
 
 	var jsonResponse CreateBillResponse
 	json.Unmarshal(body, &jsonResponse)
@@ -130,72 +130,98 @@ type CallbackResponse struct {
 //encore:api public raw method=POST path=/payments/callback
 func Callback(res http.ResponseWriter, req *http.Request) {
 	var tx Transaction
+
+	ctx := context.Background()
+	// Start a database transaction
+	dbTX, err := pgxDB.Begin(ctx)
+	if err != nil {
+		return
+	}
+	defer dbTX.Rollback(ctx) // Ensure rollback in case of an error
+
 	dataFormValue := req.PostFormValue("data")
 
-	// Unmarshal the JSON string into the struct
-	err := json.Unmarshal([]byte(dataFormValue), &tx)
+	err = json.Unmarshal([]byte(dataFormValue), &tx)
 	if err != nil {
-		fmt.Println("Error unmarshaling JSON:", err)
+		rlog.Error("Error unmarshaling JSON", "err", err)
 		return
 	}
 
-	log.Println("data: ", tx.SenderEmail)
+	rollbackTickets := func(status string) {
+		rlog.Error("Error: Payment failed", "status", status)
 
-	ctx := context.Background()
-	rollbackTickets := func() {
-		res, err := RollbackTickets(ctx, tx.BillLinkID)
-		if err != nil {
-			log.Println("Error: Error rolling back tickets: ", err)
-			return
+		for _, ticketID := range buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].TicketIDs {
+			err := query.ChangeTicketsStatus(ctx, db.ChangeTicketsStatusParams{
+				Status:   db.TicketStatusAvailable,
+				TicketID: ticketID,
+			})
+			if err != nil {
+				rlog.Error("Error: Error rolling back tickets status", status, err.Error())
+				return
+			}
 		}
-		log.Println("Error: Sold Ticket IDs: ", res.Data.TicketIDs)
 
-		// drop buy ticket data
+		rlog.Error("Error: Sold Ticket IDs", "rollbacked", buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].TicketIDs)
 		delete(buyTicketData, fmt.Sprintf("reserve:%d", tx.BillLinkID))
 	}
 
 	switch tx.Status {
 	case "SUCCESSFUL":
-		log.Println("Payment successful")
-		res, err := ReserveTicket(ctx, tx.BillLinkID)
+		paymentData, err := json.Marshal(tx)
+		_, err = query.InsertPayment(ctx, db.InsertPaymentParams{
+			EventID:    buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].EventID,
+			Data:       paymentData,
+			Name:       tx.SenderName,
+			Email:      tx.SenderEmail,
+			BillLinkID: int32(tx.BillLinkID),
+		})
 		if err != nil {
-			log.Println("Error: Error reserving ticket: ", err)
+			rlog.Error("Error: Error inserting payment: ", err.Error())
 			return
 		}
-		log.Println("Sold Ticket IDs: ", res.Data.TicketIDs)
+
+		for i, ticketID := range buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].TicketIDs {
+			rlog.Info("Processing", "TicketId", ticketID)
+			err := query.ChangeTicketsStatus(ctx, db.ChangeTicketsStatusParams{
+				Status:   db.TicketStatusSold,
+				TicketID: ticketID,
+			})
+			if err != nil {
+				rlog.Error("Error: Error updating tickets status: ", tx.Status, err.Error())
+				return
+
+			}
+
+			attendeeData, err := json.Marshal(buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].Attendees[i])
+			_, err = query.InsertAttendee(ctx, db.InsertAttendeeParams{
+				EventID:  buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].EventID,
+				TicketID: ticketID,
+				Data:     attendeeData,
+			})
+			if err != nil {
+				rlog.Error("Error: Error inserting attendee: ", err.Error())
+				return
+			}
+		}
+		rlog.Info("Payment successful")
+		delete(buyTicketData, fmt.Sprintf("reserve:%d", tx.BillLinkID))
 		break
 	case "FAILED":
-		log.Println("Error: Payment failed")
-		rollbackTickets()
+		rollbackTickets(tx.Status)
 		break
 	case "CANCELLED":
-		log.Println("Error: Payment cancelled")
-		rollbackTickets()
+		rollbackTickets(tx.Status)
 		break
 	default:
 		log.Println("Error: Unknown payment status")
-		// rollbackTickets()
+		rollbackTickets(tx.Status)
 		break
 	}
 
+	// Commit the transaction if all tickets are deleted successfully
+	if err := dbTX.Commit(ctx); err != nil {
+		return
+	}
+
 	res.WriteHeader(http.StatusOK)
-}
-
-func encodeSecretKey() string {
-	secretKey := secrets.FlipApiSecretKey
-
-	// Encode to Base64
-	encodedAuth := base64.StdEncoding.EncodeToString([]byte(secretKey + ":"))
-
-	// Print the Authorization header
-	authorizationHeader := fmt.Sprintf("Basic %s", encodedAuth)
-	fmt.Printf("%s\n", authorizationHeader)
-
-	return authorizationHeader
-}
-
-var secrets struct {
-	FlipApiBaseEndpoint string `json:"flip_api_base_endpoint"`
-	FlipValidationToken string `json:"flip_validation_token"`
-	FlipApiSecretKey    string `json:"flip_api_secret_key"`
 }
