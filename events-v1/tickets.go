@@ -42,14 +42,14 @@ func CreateTickets(ctx context.Context, id uuid.UUID, req *CreateTicketRequest) 
 		}
 	}(tx, ctx) // Ensure rollback in case of an error
 
-	bbenefits, err := json.Marshal(req.Benefits)
+	benefits, err := json.Marshal(req.Benefits)
 	created := 0
 	for i := 0; i < req.TicketCount; i++ {
 		_, err := query.InsertTicket(ctx, db.InsertTicketParams{
 			Name:        req.Name,
 			Description: req.Description,
 			Price:       req.Price,
-			Benefits:    bbenefits,
+			Benefits:    benefits,
 			EventID: pgtype.UUID{
 				Bytes: id,
 				Valid: true,

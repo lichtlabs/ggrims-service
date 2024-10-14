@@ -37,7 +37,7 @@ type CreateBillResponse struct {
 	RedirectURL           string `json:"redirect_url"`
 	ExpiredDate           string `json:"expired_date"`
 	CreatedFrom           string `json:"created_from"`
-	Status                int    `json:"status"`
+	Status                string `json:"status"`
 	Step                  int    `json:"step"`
 	IsAddressRequired     int    `json:"is_address_required"`
 	IsPhoneNumberRequired int    `json:"is_phone_number_required"`
