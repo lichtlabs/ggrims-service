@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"io"
 	"log"
 	"net/http"
@@ -74,7 +75,12 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 		rlog.Info("Error making request:", "err", err)
 		return nil, eb.Code(errs.Internal).Msg("Error making request").Err()
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			rlog.Error("Error closing response body", "err", err)
+		}
+	}(resp.Body)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -84,7 +90,10 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 	rlog.Info("Response:", string(body))
 
 	var jsonResponse CreateBillResponse
-	json.Unmarshal(body, &jsonResponse)
+	err = json.Unmarshal(body, &jsonResponse)
+	if err != nil {
+		return nil, err
+	}
 
 	return &CreateBillResponse{
 		LinkID:                jsonResponse.LinkID,
@@ -137,13 +146,18 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		return
 	}
-	defer dbTX.Rollback(ctx) // Ensure rollback in case of an error
+	defer func(dbTX pgx.Tx, ctx context.Context) {
+		err := dbTX.Rollback(ctx)
+		if err != nil {
+			rlog.Error("Error rolling back transaction", "err", err)
+		}
+	}(dbTX, ctx) // Ensure rollback in case of an error
 
 	dataFormValue := req.PostFormValue("data")
 
 	err = json.Unmarshal([]byte(dataFormValue), &tx)
 	if err != nil {
-		rlog.Error("Error unmarshaling JSON", "err", err)
+		rlog.Error("Error unmarshalling JSON", "err", err)
 		return
 	}
 
@@ -161,7 +175,7 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 			}
 		}
 
-		rlog.Error("Error: Sold Ticket IDs", "rollbacked", buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].TicketIDs)
+		rlog.Error("Error: Sold Ticket IDs", "rolled back", buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].TicketIDs)
 		delete(buyTicketData, fmt.Sprintf("reserve:%d", tx.BillLinkID))
 	}
 

@@ -5,12 +5,12 @@ import (
 
 	"encore.dev/beta/errs"
 	"encore.dev/rlog"
-	uuid "encore.dev/types/uuid"
+	"encore.dev/types/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/lichtlabs/ggrims-service/events-v1/db"
 )
 
-// List attendees on an event
+// ListEventAttendees List attendees on an event
 //
 //encore:api auth method=GET path=/v1/events/:id/attendees
 func ListEventAttendees(ctx context.Context, id uuid.UUID, params *ListQuery) (*BaseResponse[[]db.ListAttendeeRow], error) {

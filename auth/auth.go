@@ -42,7 +42,7 @@ type UserData struct {
 	EmailAddresses        []clerk.EmailAddress `json:"email_addresses"`
 }
 
-// The `encore:authhandler` annotation tells Encore to run this function for all
+// AuthHandler The `encore:authhandler` annotation tells Encore to run this function for all
 // incoming API call that requires authentication.
 // Learn more: encore.dev/docs/develop/auth#the-auth-handler
 //

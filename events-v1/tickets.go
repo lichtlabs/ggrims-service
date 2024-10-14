@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"strconv"
 	"strings"
 	"time"
 
 	"encore.dev/beta/errs"
 	"encore.dev/rlog"
-	uuid "encore.dev/types/uuid"
+	"encore.dev/types/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/lichtlabs/ggrims-service/events-v1/db"
 )
@@ -23,7 +24,7 @@ type CreateTicketRequest struct {
 	TicketCount int      `json:"ticket_count"`
 }
 
-// Create tickets for an event
+// CreateTickets Create tickets for an event
 //
 //encore:api auth method=POST path=/v1/events/:id/tickets/create
 func CreateTickets(ctx context.Context, id uuid.UUID, req *CreateTicketRequest) (*BaseResponse[InsertionResponse], error) {
@@ -34,7 +35,12 @@ func CreateTickets(ctx context.Context, id uuid.UUID, req *CreateTicketRequest) 
 	if err != nil {
 		return nil, eb.Cause(err).Code(errs.Unavailable).Msg("failed to start transaction").Err()
 	}
-	defer tx.Rollback(ctx) // Ensure rollback in case of an error
+	defer func(tx pgx.Tx, ctx context.Context) {
+		err := tx.Rollback(ctx)
+		if err != nil {
+			rlog.Error("An error occurred while rolling back a transaction", "Rollback:err", err.Error())
+		}
+	}(tx, ctx) // Ensure rollback in case of an error
 
 	bbenefits, err := json.Marshal(req.Benefits)
 	created := 0
@@ -77,7 +83,7 @@ type UpdateTicketRequest struct {
 	TicketCount int      `json:"ticket_count"`
 }
 
-// Update tickets for an event
+// UpdateTickets Update tickets for an event
 //
 //encore:api auth method=PUT path=/v1/events/:id/tickets/update
 func UpdateTickets(ctx context.Context, id uuid.UUID, req *UpdateTicketRequest) (*BaseResponse[UpdatesResponse], error) {
@@ -88,7 +94,12 @@ func UpdateTickets(ctx context.Context, id uuid.UUID, req *UpdateTicketRequest) 
 	if err != nil {
 		return nil, eb.Cause(err).Code(errs.Unavailable).Msg("failed to start transaction").Err()
 	}
-	defer tx.Rollback(ctx) // Ensure rollback in case of an error
+	defer func(tx pgx.Tx, ctx context.Context) {
+		err := tx.Rollback(ctx)
+		if err != nil {
+			rlog.Error("An error occurred while rolling back a transaction", "Rollback:err", err.Error())
+		}
+	}(tx, ctx) // Ensure rollback in case of an error
 
 	updated := 0
 	for i := 0; i < req.TicketCount; i++ {
@@ -126,7 +137,7 @@ type DeleteTicketRequest struct {
 	TicketCount int `json:"ticket_count"`
 }
 
-// Delete tickets on an event
+// DeleteTickets Delete tickets on an event
 //
 //encore:api auth method=DELETE path=/v1/events/:id/tickets/delete
 func DeleteTickets(ctx context.Context, id uuid.UUID, req *DeleteTicketRequest) (*BaseResponse[DeletesResponse], error) {
@@ -137,7 +148,12 @@ func DeleteTickets(ctx context.Context, id uuid.UUID, req *DeleteTicketRequest) 
 	if err != nil {
 		return nil, eb.Cause(err).Code(errs.Unavailable).Msg("failed to start transaction").Err()
 	}
-	defer tx.Rollback(ctx) // Ensure rollback in case of an error
+	defer func(tx pgx.Tx, ctx context.Context) {
+		err := tx.Rollback(ctx)
+		if err != nil {
+			rlog.Error("An error occurred while rolling back a transaction", "Rollback:err", err.Error())
+		}
+	}(tx, ctx) // Ensure rollback in case of an error
 
 	deleted := 0
 	for i := 0; i < req.TicketCount; i++ {
@@ -177,7 +193,7 @@ type ListDistinctTicketsResponse struct {
 	Count       int64              `json:"count"`
 }
 
-// Get distinct tickets for an event
+// ListDistinctTickets Get distinct tickets for an event
 //
 //encore:api public method=GET path=/v1/events/:id/tickets/distinct
 func ListDistinctTickets(ctx context.Context, id uuid.UUID) (*BaseResponse[[]ListDistinctTicketsResponse], error) {
@@ -231,7 +247,7 @@ type BuyTicketResponse struct {
 	CreateBillResponse
 }
 
-// Buy tickets for an event
+// BuyTickets Buy tickets for an event
 //
 //encore:api public method=POST path=/v1/events/:id/tickets/buy
 func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*BaseResponse[BuyTicketResponse], error) {
@@ -242,7 +258,12 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 	if err != nil {
 		return nil, eb.Cause(err).Code(errs.Unavailable).Msg("failed to start transaction").Err()
 	}
-	defer tx.Rollback(ctx) // Ensure rollback in case of an error
+	defer func(tx pgx.Tx, ctx context.Context) {
+		err := tx.Rollback(ctx)
+		if err != nil {
+			rlog.Error("An error occurred while rolling back a transaction", "Rollback:err", err.Error())
+		}
+	}(tx, ctx) // Ensure rollback in case of an error
 
 	// get available tickets with name
 	availableTickets, err := query.GetAvailableTickets(ctx, db.GetAvailableTicketsParams{

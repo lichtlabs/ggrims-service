@@ -37,7 +37,7 @@ type CreateEventRequest struct {
 	Inputs         []*EventTicketInput `json:"inputs"`
 }
 
-// Create an event
+// CreateEvent Create an event
 //
 //encore:api auth method=POST path=/v1/events
 func CreateEvent(ctx context.Context, req *CreateEventRequest) (*BaseResponse[InsertionResponse], error) {
@@ -84,7 +84,7 @@ func CreateEvent(ctx context.Context, req *CreateEventRequest) (*BaseResponse[In
 	}, nil
 }
 
-// Update an event
+// UpdateEvent Update an event
 //
 //encore:api auth method=PUT path=/v1/events/:id
 func UpdateEvent(ctx context.Context, id uuid.UUID, req *db.UpdateEventParams) error {
@@ -109,7 +109,7 @@ func UpdateEvent(ctx context.Context, id uuid.UUID, req *db.UpdateEventParams) e
 	return nil
 }
 
-// Delete an event
+// DeleteEvent Delete an event
 //
 //encore:api auth method=DELETE path=/v1/events/:id
 func DeleteEvent(ctx context.Context, id uuid.UUID) error {
@@ -127,7 +127,7 @@ func DeleteEvent(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// Get an event including ticket inputs
+// GetEvent Get an event including ticket inputs
 //
 //encore:api public method=GET path=/v1/events/:id
 func GetEvent(ctx context.Context, id uuid.UUID) (*BaseResponse[Event], error) {
@@ -164,7 +164,7 @@ func GetEvent(ctx context.Context, id uuid.UUID) (*BaseResponse[Event], error) {
 	}, nil
 }
 
-// Get all events including ticket inputs
+// ListEvents Get all events including ticket inputs
 //
 //encore:api public method=GET path=/v1/events
 func ListEvents(ctx context.Context, params *ListQuery) (*BaseResponse[[]Event], error) {
@@ -182,7 +182,7 @@ func ListEvents(ctx context.Context, params *ListQuery) (*BaseResponse[[]Event],
 		return nil, eb.Code(errs.Internal).Msg("An error occurred while retrieving events").Err()
 	}
 
-	datas := make([]Event, 0)
+	events := make([]Event, 0)
 	for _, data := range data {
 		ticketInputs := make([]*EventTicketInput, 0)
 		err := json.Unmarshal(data.TicketInputs, &ticketInputs)
@@ -191,7 +191,7 @@ func ListEvents(ctx context.Context, params *ListQuery) (*BaseResponse[[]Event],
 			return nil, eb.Code(errs.Internal).Msg("An error occurred while decoding ticket inputs").Err()
 		}
 
-		datas = append(datas, Event{
+		events = append(events, Event{
 			ID:             data.ID,
 			Name:           data.Name,
 			Description:    data.Description,
@@ -205,12 +205,12 @@ func ListEvents(ctx context.Context, params *ListQuery) (*BaseResponse[[]Event],
 	}
 
 	return &BaseResponse[[]Event]{
-		Data:    datas,
+		Data:    events,
 		Message: "Events retrieved successfully",
 	}, nil
 }
 
-// Get all upcoming events including ticket inputs
+// ListUpcomingEvents Get all upcoming events including ticket inputs
 //
 //encore:api public method=GET path=/v1/upcoming-events
 func ListUpcomingEvents(ctx context.Context) (*BaseResponse[[]Event], error) {
@@ -221,9 +221,9 @@ func ListUpcomingEvents(ctx context.Context) (*BaseResponse[[]Event], error) {
 		return nil, eb.Code(errs.Internal).Msg(err.Error()).Err()
 	}
 
-	datas := make([]Event, 0)
+	events := make([]Event, 0)
 	for _, data := range data {
-		datas = append(datas, Event{
+		events = append(events, Event{
 			ID:             data.ID,
 			Name:           data.Name,
 			Description:    data.Description,
@@ -236,7 +236,7 @@ func ListUpcomingEvents(ctx context.Context) (*BaseResponse[[]Event], error) {
 	}
 
 	return &BaseResponse[[]Event]{
-		Data:    datas,
+		Data:    events,
 		Message: "Events retrieved successfully",
 	}, nil
 }
