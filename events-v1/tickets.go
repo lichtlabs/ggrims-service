@@ -278,18 +278,10 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 	}
 	rlog.Info("GetAvailableTickets: ", "availableTickets", availableTickets)
 
-	event, err := query.GetEvent(ctx, pgtype.UUID{
-		Bytes: id,
-		Valid: true,
-	})
-	if err != nil {
-		return nil, eb.Cause(err).Code(errs.Internal).Msg("An error occurred while retrieving event").Err()
-	}
-
 	// call payments
 	price, err := strconv.Atoi(availableTickets[0].Price)
 	createBillRes, err := CreateBill(ctx, &CreateBillRequest{
-		Title:       fmt.Sprintf("Buy %d %s tickets for %s", req.TicketAmount, availableTickets[0].Name, event.Name),
+		Title:       availableTickets[0].Name,
 		Amount:      req.TicketAmount*price + (req.TicketAmount * 1000),
 		Type:        "SINGLE",
 		ExpiredDate: time.Now().Add(48 * time.Hour),
