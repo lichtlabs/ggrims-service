@@ -1,0 +1,78 @@
+package mailtempl
+
+import (
+    "fmt"
+    "time"
+)
+
+type PurchaseConfirmation struct {
+	CustomerName string
+	ItemName     string
+	ItemPrice    string
+	TotalPrice   string
+	OrderNumber  string
+}
+
+templ PurchaseConfirmationEmail(data PurchaseConfirmation) {
+	<!DOCTYPE html>
+	<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Purchase Confirmation</title>
+	</head>
+	<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
+		<table role="presentation" style="width: 100%; border-collapse: collapse;">
+			<tr>
+				<td style="padding: 0;">
+					<table role="presentation" style="width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+						<!-- Header -->
+						<tr>
+							<td style="background-color: #000000; padding: 20px; text-align: center;">
+								<h1 style="color: #ffffff; margin: 0;">Your Purchase Confirmation</h1>
+							</td>
+						</tr>
+
+						<!-- Main Content -->
+						<tr>
+							<td style="padding: 20px;">
+								<p style="margin-bottom: 20px;">Dear { data.CustomerName },</p>
+								<p style="margin-bottom: 20px;">Thank you for your purchase. We're excited to confirm that your order has been successfully processed.</p>
+
+								<h2 style="color: #333333;">Order Details</h2>
+								<table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+									<tr>
+										<th style="text-align: left; padding: 10px; border-bottom: 1px solid #dddddd;">Item</th>
+										<th style="text-align: right; padding: 10px; border-bottom: 1px solid #dddddd;">Price</th>
+									</tr>
+									<tr>
+										<td style="padding: 10px; border-bottom: 1px solid #dddddd;">{ data.ItemName }</td>
+										<td style="text-align: right; padding: 10px; border-bottom: 1px solid #dddddd;">IDR { data.ItemPrice }</td>
+									</tr>
+									<tr>
+										<td style="padding: 10px; font-weight: bold;">Total</td>
+										<td style="text-align: right; padding: 10px; font-weight: bold;">IDR { data.TotalPrice }</td>
+									</tr>
+								</table>
+
+								<p style="margin-bottom: 20px;">Your order number is: <strong>{ data.OrderNumber }</strong></p>
+
+								<p style="margin-bottom: 20px;">You can track your order status by clicking the button below:</p>
+
+								<p>If you have any questions about your order, please don't hesitate to contact our customer support team.</p>
+							</td>
+						</tr>
+
+						<!-- Footer -->
+						<tr>
+							<td style="background-color: #f8f9fa; padding: 20px; text-align: center;">
+								<p style="margin: 0; color: #6c757d; font-size: 14px;">&copy; { fmt.Sprintf("%d", time.Now().Year()) } Licht Labs. All rights reserved.</p>
+							</td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+		</table>
+	</body>
+	</html>
+}

@@ -5,7 +5,9 @@ import (
 	"strings"
 )
 
-// ExtractQuery extracts query from query string
+// extractQuery adjusts the given ListQuery based on predefined rules.
+// It modifies the page to be zero-based, sets a default limit if not provided,
+// and formats the order by clause with default or specified values.
 func extractQuery(query *ListQuery) *ListQuery {
 	if query.Page > 0 {
 		query.Page = query.Page - 1

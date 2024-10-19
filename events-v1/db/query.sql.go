@@ -58,12 +58,24 @@ func (q *Queries) DeletePayment(ctx context.Context, id pgtype.UUID) error {
 }
 
 const deleteTicket = `-- name: DeleteTicket :exec
+WITH rows_to_delete AS (
+    SELECT id, event_id, name, description, price, benefits, status, created_at, updated_at, hash
+    FROM ticket
+    WHERE ticket.event_id = $1 AND ticket.name = $2
+    LIMIT $3
+)
 DELETE FROM ticket
-WHERE id = $1
+WHERE id IN (SELECT id FROM rows_to_delete)
 `
 
-func (q *Queries) DeleteTicket(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteTicket, id)
+type DeleteTicketParams struct {
+	EvID       pgtype.UUID
+	TicketName string
+	Limits     int32
+}
+
+func (q *Queries) DeleteTicket(ctx context.Context, arg DeleteTicketParams) error {
+	_, err := q.db.Exec(ctx, deleteTicket, arg.EvID, arg.TicketName, arg.Limits)
 	return err
 }
 
@@ -72,6 +84,7 @@ SELECT
     id,
     name,
     price,
+    hash,
     COUNT(name) AS count
 FROM ticket
 WHERE status = 'available' AND name = $1
@@ -88,6 +101,7 @@ type GetAvailableTicketsRow struct {
 	ID    pgtype.UUID
 	Name  string
 	Price string
+	Hash  pgtype.Text
 	Count int64
 }
 
@@ -104,6 +118,7 @@ func (q *Queries) GetAvailableTickets(ctx context.Context, arg GetAvailableTicke
 			&i.ID,
 			&i.Name,
 			&i.Price,
+			&i.Hash,
 			&i.Count,
 		); err != nil {
 			return nil, err
@@ -193,7 +208,7 @@ func (q *Queries) GetPayment(ctx context.Context, id pgtype.UUID) (Payment, erro
 
 const getTicket = `-- name: GetTicket :one
 SELECT
-    id, event_id, name, description, price, benefits, status, created_at, updated_at
+    id, event_id, name, description, price, benefits, status, created_at, updated_at, hash
 FROM ticket
 WHERE id = $1
 `
@@ -211,6 +226,7 @@ func (q *Queries) GetTicket(ctx context.Context, id pgtype.UUID) (Ticket, error)
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Hash,
 	)
 	return i, err
 }
@@ -333,9 +349,9 @@ func (q *Queries) InsertPayment(ctx context.Context, arg InsertPaymentParams) (p
 const insertTicket = `-- name: InsertTicket :one
 
 INSERT INTO ticket
-    (event_id, name, description, price, benefits)
+    (event_id, name, description, price, benefits, hash)
 VALUES
-    ($1, $2, $3, $4, $5)
+    ($1, $2, $3, $4, $5, $6)
 RETURNING id
 `
 
@@ -345,6 +361,7 @@ type InsertTicketParams struct {
 	Description string
 	Price       string
 	Benefits    []byte
+	Hash        pgtype.Text
 }
 
 // ###############################################################
@@ -357,6 +374,7 @@ func (q *Queries) InsertTicket(ctx context.Context, arg InsertTicketParams) (pgt
 		arg.Description,
 		arg.Price,
 		arg.Benefits,
+		arg.Hash,
 	)
 	var id pgtype.UUID
 	err := row.Scan(&id)

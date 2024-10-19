@@ -78,9 +78,9 @@ RETURNING id;
 
 -- name: InsertTicket :one
 INSERT INTO ticket
-    (event_id, name, description, price, benefits)
+    (event_id, name, description, price, benefits, hash)
 VALUES
-    (@event_id, @name, @description, @price, @benefits)
+    (@event_id, @name, @description, @price, @benefits, @hash)
 RETURNING id;
 
 -- name: UpdateTicket :exec
@@ -93,8 +93,14 @@ SET
 WHERE event_id = @event_id;
 
 -- name: DeleteTicket :exec
+WITH rows_to_delete AS (
+    SELECT *
+    FROM ticket
+    WHERE ticket.event_id = @ev_id AND ticket.name = @ticket_name
+    LIMIT @limits
+)
 DELETE FROM ticket
-WHERE id = $1;
+WHERE id IN (SELECT id FROM rows_to_delete);
 
 -- name: GetTicket :one
 SELECT
@@ -122,6 +128,7 @@ SELECT
     id,
     name,
     price,
+    hash,
     COUNT(name) AS count
 FROM ticket
 WHERE status = 'available' AND name = @name

@@ -138,6 +138,7 @@ type Ticket struct {
 	Status      TicketStatus
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+	Hash        pgtype.Text
 }
 
 type TicketInput struct {

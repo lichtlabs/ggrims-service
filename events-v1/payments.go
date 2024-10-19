@@ -7,10 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"github.com/lichtlabs/ggrims-service/mail"
+	mailtempl "github.com/lichtlabs/ggrims-service/mail/template"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"encore.dev/beta/errs"
@@ -18,6 +21,7 @@ import (
 	"github.com/lichtlabs/ggrims-service/events-v1/db"
 )
 
+// CreateBillRequest represents the request parameters required to create a new bill.
 type CreateBillRequest struct {
 	Title                 string    `json:"title"`
 	Amount                int       `json:"amount"`
@@ -28,6 +32,7 @@ type CreateBillRequest struct {
 	IsPhoneNumberRequired int       `json:"is_phone_number_required"`
 }
 
+// CreateBillResponse represents the response structure for creating a bill.
 type CreateBillResponse struct {
 	LinkID                int    `json:"link_id"`
 	LinkURL               string `json:"link_url"`
@@ -43,7 +48,7 @@ type CreateBillResponse struct {
 	IsPhoneNumberRequired int    `json:"is_phone_number_required"`
 }
 
-// CreateBill creates a bill for users to pay
+// CreateBill creates a new bill with the given request parameters and returns the response or an error.
 //
 //encore:api private method=POST path=/payments
 func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillResponse, error) {
@@ -134,7 +139,7 @@ type CallbackResponse struct {
 	Status string `json:"status"`
 }
 
-// Callback is the callback endpoint for flip to hit when a payment data was changed
+// Callback handles the HTTP request for processing a payment callback, updating the database, and changing ticket statuses.
 //
 //encore:api public raw method=POST path=/payments/callback
 func Callback(res http.ResponseWriter, req *http.Request) {
@@ -149,9 +154,9 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 	defer func(dbTX pgx.Tx, ctx context.Context) {
 		err := dbTX.Rollback(ctx)
 		if err != nil {
-			rlog.Error("Error rolling back transaction", "err", err)
+			rlog.Error("Error rolling back database transaction", "err", err)
 		}
-	}(dbTX, ctx) // Ensure rollback in case of an error
+	}(dbTX, ctx)
 
 	dataFormValue := req.PostFormValue("data")
 
@@ -194,12 +199,29 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		ticketPrice := 0
+
 		for i, ticketID := range buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].TicketIDs {
+			if ticketPrice == 0 {
+				ticket, err := query.GetTicket(ctx, ticketID)
+				if err != nil {
+					rlog.Error("Error: Error getting ticket: ", err.Error())
+					return
+				}
+				log.Println(ticket.Price)
+				ticketPrice, err = strconv.Atoi(ticket.Price)
+				if err != nil {
+					rlog.Error("Error: Error converting ticket price to int: ", err.Error())
+					return
+				}
+			}
+
 			rlog.Info("Processing", "TicketId", ticketID)
-			err := query.ChangeTicketsStatus(ctx, db.ChangeTicketsStatusParams{
+			err = query.ChangeTicketsStatus(ctx, db.ChangeTicketsStatusParams{
 				Status:   db.TicketStatusSold,
 				TicketID: ticketID,
 			})
+
 			if err != nil {
 				rlog.Error("Error: Error updating tickets status: ", tx.Status, err.Error())
 				return
@@ -218,6 +240,33 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 			}
 		}
 		rlog.Info("Payment successful")
+
+		var buff bytes.Buffer
+
+		ctx := context.Background()
+		err = mailtempl.PurchaseConfirmationEmail(mailtempl.PurchaseConfirmation{
+			CustomerName: tx.SenderName,
+			ItemName:     tx.BillTitle,
+			ItemPrice:    strconv.Itoa(ticketPrice),
+			TotalPrice:   strconv.Itoa(tx.Amount),
+			OrderNumber:  tx.ID,
+		}).Render(ctx, &buff)
+		if err != nil {
+			rlog.Error("Error: Error rendering purchase confirmation email: ", err.Error())
+			return
+		}
+
+		body := buff.String()
+		err = mail.SendTicketMail(ctx, &mail.SendTicketMailRequest{
+			Recipients:   []string{tx.SenderEmail},
+			TicketHashes: buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].TicketHashes,
+			Body:         body,
+		})
+		if err != nil {
+			rlog.Error("Error: Error sending ticket mail: ", err.Error())
+			return
+		}
+
 		delete(buyTicketData, fmt.Sprintf("reserve:%d", tx.BillLinkID))
 		break
 	case "FAILED":
