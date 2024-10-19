@@ -1,4 +1,4 @@
-package eventsv1
+package events
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ import (
 
 	"encore.dev/beta/errs"
 	"encore.dev/rlog"
-	"github.com/lichtlabs/ggrims-service/events-v1/db"
+	"github.com/lichtlabs/ggrims-service/events/db"
 )
 
 // CreateBillRequest represents the request parameters required to create a new bill.

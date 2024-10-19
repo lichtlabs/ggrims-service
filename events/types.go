@@ -1,4 +1,4 @@
-package eventsv1
+package events
 
 type BaseResponse[T any] struct {
 	Data    T      `json:"data"`

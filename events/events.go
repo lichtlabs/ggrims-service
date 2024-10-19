@@ -1,4 +1,4 @@
-package eventsv1
+package events
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"encore.dev/storage/sqldb"
 	"encore.dev/types/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/lichtlabs/ggrims-service/events-v1/db"
+	"github.com/lichtlabs/ggrims-service/events/db"
 )
 
 var (
