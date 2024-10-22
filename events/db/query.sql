@@ -78,9 +78,9 @@ RETURNING id;
 
 -- name: InsertTicket :one
 INSERT INTO ticket
-    (event_id, name, description, price, benefits, hash)
+    (event_id, name, description, price, benefits, hash, min, max)
 VALUES
-    (@event_id, @name, @description, @price, @benefits, @hash)
+    (@event_id, @name, @description, @price, @benefits, @hash, @min, @max)
 RETURNING id;
 
 -- name: UpdateTicket :exec
@@ -116,6 +116,8 @@ SELECT DISTINCT ON (name)
     price,
     benefits,
     status,
+    min,
+    max,
     created_at,
     updated_at,
     COUNT(*) OVER (PARTITION BY name)

@@ -201,7 +201,7 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 
 		ticketPrice := 0
 
-		for i, ticketID := range buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].TicketIDs {
+		for _, ticketID := range buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].TicketIDs {
 			if ticketPrice == 0 {
 				ticket, err := query.GetTicket(ctx, ticketID)
 				if err != nil {
@@ -222,27 +222,27 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 				TicketID: ticketID,
 			})
 
+			for j, _ := range buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].Attendees {
+				attendeeData, err := json.Marshal(buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].Attendees[j])
+				_, err = query.InsertAttendee(ctx, db.InsertAttendeeParams{
+					EventID:  buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].EventID,
+					TicketID: ticketID,
+					Data:     attendeeData,
+				})
+				if err != nil {
+					rlog.Error("Error: Error inserting attendee: ", err.Error())
+					return
+				}
+			}
 			if err != nil {
 				rlog.Error("Error: Error updating tickets status: ", tx.Status, err.Error())
 				return
 
 			}
-
-			attendeeData, err := json.Marshal(buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].Attendees[i])
-			_, err = query.InsertAttendee(ctx, db.InsertAttendeeParams{
-				EventID:  buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].EventID,
-				TicketID: ticketID,
-				Data:     attendeeData,
-			})
-			if err != nil {
-				rlog.Error("Error: Error inserting attendee: ", err.Error())
-				return
-			}
 		}
 		rlog.Info("Payment successful")
 
 		var buff bytes.Buffer
-
 		ctx := context.Background()
 		err = mailtempl.PurchaseConfirmationEmail(mailtempl.PurchaseConfirmation{
 			CustomerName: tx.SenderName,

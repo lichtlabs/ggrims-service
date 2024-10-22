@@ -29,6 +29,8 @@ type CreateTicketRequest struct {
 	Price       string   `json:"price"`
 	Benefits    []string `json:"benefits"`
 	TicketCount int      `json:"ticket_count"`
+	Min         int      `json:"min"`
+	Max         int      `json:"max"`
 }
 
 // CreateTickets creates multiple tickets for an event and inserts them into the database within a transaction.
@@ -77,6 +79,14 @@ func CreateTickets(ctx context.Context, id uuid.UUID, req *CreateTicketRequest) 
 			},
 			EventID: pgtype.UUID{
 				Bytes: id,
+				Valid: true,
+			},
+			Min: pgtype.Int4{
+				Int32: int32(req.Min),
+				Valid: true,
+			},
+			Max: pgtype.Int4{
+				Int32: int32(req.Max),
 				Valid: true,
 			},
 		})
@@ -201,6 +211,8 @@ type ListDistinctTicketsResponse struct {
 	Price       string             `json:"price"`
 	Benefits    []string           `json:"benefits"`
 	Status      db.TicketStatus    `json:"status"`
+	Min         int32              `json:"min"`
+	Max         int32              `json:"max"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 	Count       int64              `json:"count"`
@@ -236,6 +248,8 @@ func ListDistinctTickets(ctx context.Context, id uuid.UUID) (*BaseResponse[[]Lis
 			Price:       ticket.Price,
 			Benefits:    benefits,
 			Status:      ticket.Status,
+			Min:         ticket.Min.Int32,
+			Max:         ticket.Max.Int32,
 			CreatedAt:   ticket.CreatedAt,
 			UpdatedAt:   ticket.UpdatedAt,
 			Count:       ticket.Count,
