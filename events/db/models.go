@@ -138,6 +138,9 @@ type Ticket struct {
 	Status      TicketStatus
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+	Hash        pgtype.Text
+	Min         pgtype.Int4
+	Max         pgtype.Int4
 }
 
 type TicketInput struct {

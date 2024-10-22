@@ -1,0 +1,4 @@
+ALTER TABLE ticket
+    ADD COLUMN min int DEFAULT 1;
+ALTER TABLE ticket
+    ADD COLUMN max int DEFAULT 1;

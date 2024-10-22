@@ -1,10 +1,12 @@
-package eventsv1
+package events
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"log"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -13,18 +15,27 @@ import (
 	"encore.dev/rlog"
 	"encore.dev/types/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/lichtlabs/ggrims-service/events-v1/db"
+	"github.com/lichtlabs/ggrims-service/events/db"
 )
 
+// LetterBytes is a constant string containing alphanumeric characters used for generating random strings.
+const LetterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+// CreateTicketRequest represents a request to create a new ticket for an event. It includes the ticket's name,
+// description, price, associated benefits, and the total number of tickets to create.
 type CreateTicketRequest struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Price       string   `json:"price"`
 	Benefits    []string `json:"benefits"`
 	TicketCount int      `json:"ticket_count"`
+	Min         int      `json:"min"`
+	Max         int      `json:"max"`
 }
 
-// CreateTickets Create tickets for an event
+// CreateTickets creates multiple tickets for an event and inserts them into the database within a transaction.
+// It takes a context, event ID (UUID), and a CreateTicketRequest object as input.
+// Returns a BaseResponse containing the count of created tickets and a success message, or an error if operation fails.
 //
 //encore:api auth method=POST path=/v1/events/:id/tickets/create
 func CreateTickets(ctx context.Context, id uuid.UUID, req *CreateTicketRequest) (*BaseResponse[InsertionResponse], error) {
@@ -38,11 +49,23 @@ func CreateTickets(ctx context.Context, id uuid.UUID, req *CreateTicketRequest) 
 	defer func(tx pgx.Tx, ctx context.Context) {
 		err := tx.Rollback(ctx)
 		if err != nil {
-			rlog.Error("An error occurred while rolling back a transaction", "Rollback:err", err.Error())
+			rlog.Error("An error occurred while rolling back the transaction", "Rollback:err", err.Error())
 		}
-	}(tx, ctx) // Ensure rollback in case of an error
+	}(tx, ctx)
+
+	ticketHash := func(n int) string {
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = LetterBytes[rand.Intn(len(LetterBytes))]
+		}
+		return string(b)
+	}
 
 	benefits, err := json.Marshal(req.Benefits)
+	if err != nil {
+		return nil, eb.Cause(err).Code(errs.Unavailable).Msg("failed to marshal err").Err()
+	}
+
 	created := 0
 	for i := 0; i < req.TicketCount; i++ {
 		_, err := query.InsertTicket(ctx, db.InsertTicketParams{
@@ -50,8 +73,20 @@ func CreateTickets(ctx context.Context, id uuid.UUID, req *CreateTicketRequest) 
 			Description: req.Description,
 			Price:       req.Price,
 			Benefits:    benefits,
+			Hash: pgtype.Text{
+				String: ticketHash(32),
+				Valid:  true,
+			},
 			EventID: pgtype.UUID{
 				Bytes: id,
+				Valid: true,
+			},
+			Min: pgtype.Int4{
+				Int32: int32(req.Min),
+				Valid: true,
+			},
+			Max: pgtype.Int4{
+				Int32: int32(req.Max),
 				Valid: true,
 			},
 		})
@@ -75,6 +110,7 @@ func CreateTickets(ctx context.Context, id uuid.UUID, req *CreateTicketRequest) 
 	}, nil
 }
 
+// UpdateTicketRequest represents a request structure for updating ticket information.
 type UpdateTicketRequest struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
@@ -83,7 +119,7 @@ type UpdateTicketRequest struct {
 	TicketCount int      `json:"ticket_count"`
 }
 
-// UpdateTickets Update tickets for an event
+// UpdateTickets updates a specified number of tickets in the database within a single transaction.
 //
 //encore:api auth method=PUT path=/v1/events/:id/tickets/update
 func UpdateTickets(ctx context.Context, id uuid.UUID, req *UpdateTicketRequest) (*BaseResponse[UpdatesResponse], error) {
@@ -97,9 +133,9 @@ func UpdateTickets(ctx context.Context, id uuid.UUID, req *UpdateTicketRequest) 
 	defer func(tx pgx.Tx, ctx context.Context) {
 		err := tx.Rollback(ctx)
 		if err != nil {
-			rlog.Error("An error occurred while rolling back a transaction", "Rollback:err", err.Error())
+			rlog.Error("An error occurred while rolling back the transaction", "Rollback:err", err.Error())
 		}
-	}(tx, ctx) // Ensure rollback in case of an error
+	}(tx, ctx)
 
 	updated := 0
 	for i := 0; i < req.TicketCount; i++ {
@@ -122,6 +158,7 @@ func UpdateTickets(ctx context.Context, id uuid.UUID, req *UpdateTicketRequest) 
 
 	// Commit the transaction if all tickets are updated successfully
 	if err := tx.Commit(ctx); err != nil {
+		log.Println("failed to commit transaction", err)
 		return nil, eb.Cause(err).Code(errs.Unavailable).Msg("failed to commit transaction").Err()
 	}
 
@@ -133,49 +170,35 @@ func UpdateTickets(ctx context.Context, id uuid.UUID, req *UpdateTicketRequest) 
 	}, nil
 }
 
+// DeleteTicketRequest represents a request to delete a specified number of tickets by name.
 type DeleteTicketRequest struct {
-	TicketCount int `json:"ticket_count"`
+	TicketName  string `json:"ticket_name"`
+	TicketCount int    `json:"ticket_count"`
 }
 
-// DeleteTickets Delete tickets on an event
+// DeleteTickets removes a specified number of tickets based on the given `DeleteTicketRequest`.
+// It returns a `BaseResponse` containing `DeletesResponse` with the number of deleted tickets or an error.
 //
 //encore:api auth method=DELETE path=/v1/events/:id/tickets/delete
 func DeleteTickets(ctx context.Context, id uuid.UUID, req *DeleteTicketRequest) (*BaseResponse[DeletesResponse], error) {
 	eb := errs.B()
 
-	// Start a database transaction
-	tx, err := pgxDB.Begin(ctx)
-	if err != nil {
-		return nil, eb.Cause(err).Code(errs.Unavailable).Msg("failed to start transaction").Err()
-	}
-	defer func(tx pgx.Tx, ctx context.Context) {
-		err := tx.Rollback(ctx)
-		if err != nil {
-			rlog.Error("An error occurred while rolling back a transaction", "Rollback:err", err.Error())
-		}
-	}(tx, ctx) // Ensure rollback in case of an error
-
-	deleted := 0
-	for i := 0; i < req.TicketCount; i++ {
-		err := query.DeleteTicket(ctx, pgtype.UUID{
+	err := query.DeleteTicket(ctx, db.DeleteTicketParams{
+		TicketName: req.TicketName,
+		Limits:     int32(req.TicketCount),
+		EvID: pgtype.UUID{
 			Bytes: id,
 			Valid: true,
-		})
-		if err != nil {
-			rlog.Error("An error occurred while deleting a ticket", "DeleteTicket:err", err.Error())
-			return nil, eb.Cause(err).Code(errs.FailedPrecondition).Msg("failed to delete tickets").Err()
-		}
-		deleted++
-	}
-
-	// Commit the transaction if all tickets are deleted successfully
-	if err := tx.Commit(ctx); err != nil {
-		return nil, eb.Cause(err).Code(errs.Unavailable).Msg("failed to commit transaction").Err()
+		},
+	})
+	if err != nil {
+		rlog.Error("An error occurred while deleting a ticket", "DeleteTicket:err", err.Error())
+		return nil, eb.Cause(err).Code(errs.FailedPrecondition).Msg("failed to delete tickets").Err()
 	}
 
 	return &BaseResponse[DeletesResponse]{
 		Data: DeletesResponse{
-			Deleted: deleted,
+			Deleted: req.TicketCount,
 		},
 		Message: "Tickets deleted successfully",
 	}, nil
@@ -188,12 +211,15 @@ type ListDistinctTicketsResponse struct {
 	Price       string             `json:"price"`
 	Benefits    []string           `json:"benefits"`
 	Status      db.TicketStatus    `json:"status"`
+	Min         int32              `json:"min"`
+	Max         int32              `json:"max"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 	Count       int64              `json:"count"`
 }
 
-// ListDistinctTickets Get distinct tickets for an event
+// ListDistinctTickets retrieves a list of distinct tickets based on a given event ID.
+// It returns a BaseResponse containing a list of ListDistinctTicketsResponse or an error if the operation fails.
 //
 //encore:api public method=GET path=/v1/events/:id/tickets/distinct
 func ListDistinctTickets(ctx context.Context, id uuid.UUID) (*BaseResponse[[]ListDistinctTicketsResponse], error) {
@@ -222,6 +248,8 @@ func ListDistinctTickets(ctx context.Context, id uuid.UUID) (*BaseResponse[[]Lis
 			Price:       ticket.Price,
 			Benefits:    benefits,
 			Status:      ticket.Status,
+			Min:         ticket.Min.Int32,
+			Max:         ticket.Max.Int32,
 			CreatedAt:   ticket.CreatedAt,
 			UpdatedAt:   ticket.UpdatedAt,
 			Count:       ticket.Count,
@@ -234,20 +262,22 @@ func ListDistinctTickets(ctx context.Context, id uuid.UUID) (*BaseResponse[[]Lis
 	}, nil
 }
 
-// BuyTicketRequest represents a request to buy a ticket
+// BuyTicketRequest represents the payload required to purchase tickets for an event.
 type BuyTicketRequest struct {
 	TicketName   string               `json:"ticket_name"`
 	TicketAmount int                  `json:"ticket_amount"`
 	Attendees    []*map[string]string `json:"attendees"`
 }
 
-// BuyTicketResponse represents a response to buy a ticket
+// BuyTicketResponse combines the data of a ticket purchase and the billing response.
 type BuyTicketResponse struct {
 	BuyTicketData
 	CreateBillResponse
 }
 
-// BuyTickets Buy tickets for an event
+var ticketsHashesCount = map[string]int{}
+
+// BuyTickets processes the ticket purchase request, handles the database transaction, and manages billing for the tickets.
 //
 //encore:api public method=POST path=/v1/events/:id/tickets/buy
 func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*BaseResponse[BuyTicketResponse], error) {
@@ -261,9 +291,9 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 	defer func(tx pgx.Tx, ctx context.Context) {
 		err := tx.Rollback(ctx)
 		if err != nil {
-			rlog.Error("An error occurred while rolling back a transaction", "Rollback:err", err.Error())
+			rlog.Error("failed to rollback transaction", "err", err.Error())
 		}
-	}(tx, ctx) // Ensure rollback in case of an error
+	}(tx, ctx)
 
 	// get available tickets with name
 	availableTickets, err := query.GetAvailableTickets(ctx, db.GetAvailableTicketsParams{
@@ -291,17 +321,18 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 	}
 
 	var ticketIds []pgtype.UUID
+	var ticketHashes []string
 	for _, ticket := range availableTickets {
 		rlog.Info("ChangeTicketsStatus: ", "status", db.TicketStatusPending, "ticketID", ticket.ID)
-		err := query.ChangeTicketsStatus(ctx, db.ChangeTicketsStatusParams{
+		if err := query.ChangeTicketsStatus(ctx, db.ChangeTicketsStatusParams{
 			Status:   db.TicketStatusPending,
 			TicketID: ticket.ID,
-		})
-		if err != nil {
+		}); err != nil {
 			return nil, eb.Cause(err).Code(errs.Internal).Msg("An error occurred while changing ticket status").Err()
 		}
 
 		ticketIds = append(ticketIds, ticket.ID)
+		ticketHashes = append(ticketHashes, ticket.Hash.String)
 	}
 
 	// store buy ticket data
@@ -309,6 +340,7 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 		TicketAmount: int(availableTickets[0].Count),
 		Attendees:    req.Attendees,
 		TicketIDs:    ticketIds,
+		TicketHashes: ticketHashes,
 		EventID: pgtype.UUID{
 			Bytes: id,
 			Valid: true,
@@ -317,8 +349,16 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 
 	// Commit the transaction if all tickets are deleted successfully
 	if err := tx.Commit(ctx); err != nil {
-		return nil, eb.Cause(err).Code(errs.Unavailable).Msg("failed to commit transaction").Err()
+		rlog.Error("failed to commit your transaction", "err", err.Error())
+		return nil, eb.Cause(err).Code(errs.DataLoss).Msg("failed to commit your transaction").Err()
 	}
+
+	for i := 0; i < req.TicketAmount; i++ {
+		ticketsHashesCount[ticketHashes[i]]++
+	}
+
+	log.Println("ticketsHashesCount", ticketsHashesCount)
+	log.Println("length", len(ticketsHashesCount))
 
 	return &BaseResponse[BuyTicketResponse]{
 		Data: BuyTicketResponse{
@@ -347,12 +387,14 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 	}, nil
 }
 
+// BuyTicketData holds the data required for purchasing tickets for an event.
 type BuyTicketData struct {
 	EventID      pgtype.UUID          `json:"event_id"`
 	TicketAmount int                  `json:"ticket_amount"`
 	Attendees    []*map[string]string `json:"attendees"`
 	TicketIDs    []pgtype.UUID        `json:"ticket_ids"`
+	TicketHashes []string             `json:"ticket_hashes"`
 }
 
-// in-memory hashmap to store buy ticket data
+// buyTicketData is a map that stores temporary BuyTicketData keyed by a unique payment link_id identifier.
 var buyTicketData = map[string]BuyTicketData{}

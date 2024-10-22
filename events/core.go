@@ -1,4 +1,4 @@
-package eventsv1
+package events
 
 import "github.com/jackc/pgx/v5/pgtype"
 
