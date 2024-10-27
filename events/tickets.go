@@ -322,11 +322,11 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 		Amount: req.TicketAmount*price + (req.TicketAmount * 1000),
 		Type:   "SINGLE",
 		ExpiredDate: time.Now().Add(7 * time.Minute).Format("2006-01-02 15:04"),
-		// ExpiredDate: time.Now().Add(15 * time.Second).Format("2006-01-02 15:04"),
 	})
 	if err != nil {
 		return nil, eb.Cause(err).Code(errs.Internal).Msg("An error occurred while creating a bill").Err()
 	}
+	rlog.Info("CreateBillResponse: ", "createBillRes", createBillRes)
 
 	var ticketIds []pgtype.UUID
 	var ticketHashes []string
