@@ -149,14 +149,20 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 	// Start a database transaction
 	dbTX, err := pgxDB.Begin(ctx)
 	if err != nil {
+		rlog.Error("Failed to start transaction", "err", err)
+		res.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	defer func(dbTX pgx.Tx, ctx context.Context) {
-		err := dbTX.Rollback(ctx)
-		if err != nil {
-			rlog.Error("Error rolling back database transaction", "err", err)
+
+	var committed bool
+	defer func() {
+		if !committed {
+			err := dbTX.Rollback(ctx)
+			if err != nil && err != pgx.ErrTxClosed {
+				rlog.Error("Error rolling back database transaction", "err", err)
+			}
 		}
-	}(dbTX, ctx)
+	}()
 
 	dataFormValue := req.PostFormValue("data")
 	log.Println("dataFormValue", dataFormValue)
@@ -290,10 +296,13 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 		rollbackTickets(tx.Status)
 	}
 
-	// Commit the transaction if all tickets are deleted successfully
+	// Commit the transaction if all operations are successful
 	if err := dbTX.Commit(ctx); err != nil {
+		rlog.Error("Failed to commit transaction", "err", err)
+		res.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	committed = true
 
 	res.WriteHeader(http.StatusOK)
 }

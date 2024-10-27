@@ -27,6 +27,17 @@ func (q *Queries) ChangeTicketsStatus(ctx context.Context, arg ChangeTicketsStat
 	return err
 }
 
+const checkPaymentExists = `-- name: CheckPaymentExists :one
+SELECT EXISTS(SELECT 1 FROM payment WHERE bill_link_id = $1) AS payment_exists
+`
+
+func (q *Queries) CheckPaymentExists(ctx context.Context, billLinkID int32) (bool, error) {
+	row := q.db.QueryRow(ctx, checkPaymentExists, billLinkID)
+	var payment_exists bool
+	err := row.Scan(&payment_exists)
+	return payment_exists, err
+}
+
 const deleteAttendee = `-- name: DeleteAttendee :exec
 DELETE FROM attendee
 WHERE id = $1
@@ -192,6 +203,26 @@ WHERE e.id = $1
 
 func (q *Queries) GetPayment(ctx context.Context, id pgtype.UUID) (Payment, error) {
 	row := q.db.QueryRow(ctx, getPayment, id)
+	var i Payment
+	err := row.Scan(
+		&i.ID,
+		&i.EventID,
+		&i.Data,
+		&i.Name,
+		&i.Email,
+		&i.BillLinkID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPaymentByBillLinkID = `-- name: GetPaymentByBillLinkID :one
+SELECT id, event_id, data, name, email, bill_link_id, created_at, updated_at FROM payment WHERE bill_link_id = $1 LIMIT 1
+`
+
+func (q *Queries) GetPaymentByBillLinkID(ctx context.Context, billLinkID int32) (Payment, error) {
+	row := q.db.QueryRow(ctx, getPaymentByBillLinkID, billLinkID)
 	var i Payment
 	err := row.Scan(
 		&i.ID,

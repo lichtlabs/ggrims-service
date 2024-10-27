@@ -276,8 +276,6 @@ type BuyTicketResponse struct {
 	CreateBillResponse
 }
 
-var ticketsHashesCount = map[string]int{}
-
 // BuyTickets processes the ticket purchase request, handles the database transaction, and manages billing for the tickets.
 //
 //encore:api public method=POST path=/v1/events/:id/tickets/buy
@@ -289,12 +287,16 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 	if err != nil {
 		return nil, eb.Cause(err).Code(errs.Unavailable).Msg("failed to start transaction").Err()
 	}
-	defer func(tx pgx.Tx, ctx context.Context) {
-		err := tx.Rollback(ctx)
-		if err != nil {
-			rlog.Error("failed to rollback transaction", "err", err.Error())
+
+	var committed bool
+	defer func() {
+		if !committed {
+			err := tx.Rollback(ctx)
+			if err != nil && err != pgx.ErrTxClosed {
+				rlog.Error("failed to rollback transaction", "err", err.Error())
+			}
 		}
-	}(tx, ctx)
+	}()
 
 	// get available tickets with name
 	availableTickets, err := query.GetAvailableTickets(ctx, db.GetAvailableTicketsParams{
@@ -307,7 +309,6 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 	if err != nil {
 		return nil, eb.Cause(err).Code(errs.Internal).Msg("An error occurred while retrieving available tickets").Err()
 	}
-	rlog.Info("GetAvailableTickets: ", "availableTickets", availableTickets)
 
 	// call payments
 	price, err := strconv.Atoi(availableTickets[0].Price)
@@ -320,7 +321,7 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 		Title:  availableTickets[0].Name,
 		Amount: req.TicketAmount*price + (req.TicketAmount * 1000),
 		Type:   "SINGLE",
-		ExpiredDate: time.Now().Add(5 * time.Minute).Format("2006-01-02 15:04"),
+		ExpiredDate: time.Now().Add(7 * time.Minute).Format("2006-01-02 15:04"),
 		// ExpiredDate: time.Now().Add(15 * time.Second).Format("2006-01-02 15:04"),
 	})
 	if err != nil {
@@ -330,7 +331,6 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 	var ticketIds []pgtype.UUID
 	var ticketHashes []string
 	for _, ticket := range availableTickets {
-		rlog.Info("ChangeTicketsStatus: ", "status", db.TicketStatusPending, "ticketID", ticket.ID)
 		if err := query.ChangeTicketsStatus(ctx, db.ChangeTicketsStatusParams{
 			Status:   db.TicketStatusPending,
 			TicketID: ticket.ID,
@@ -343,7 +343,8 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 	}
 
 	// store buy ticket data
-	buyTicketData[fmt.Sprintf("reserve:%d", createBillRes.LinkID)] = BuyTicketData{
+	reserveKey := fmt.Sprintf("reserve:%d", createBillRes.LinkID)
+	buyTicketData[reserveKey] = BuyTicketData{
 		TicketAmount: int(availableTickets[0].Count),
 		Attendees:    req.Attendees,
 		TicketIDs:    ticketIds,
@@ -354,26 +355,51 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 		},
 	}
 
+	// Start a goroutine to handle the timeout
+	go func() {
+		rlog.Info("Checking payment existence", "billLinkID", createBillRes.LinkID)
+		time.Sleep(7 * time.Minute)
+		
+		// Check if payment exists
+		paymentExists, err := query.CheckPaymentExists(context.Background(), int32(createBillRes.LinkID))
+		if err != nil {
+			rlog.Error("Error checking payment existence", "err", err)
+			return
+		}
+
+		if !paymentExists {
+			// No payment received, change ticket status back to available
+			for _, ticketID := range ticketIds {
+				err := query.ChangeTicketsStatus(context.Background(), db.ChangeTicketsStatusParams{
+					Status:   db.TicketStatusAvailable,
+					TicketID: ticketID,
+				})
+				if err != nil {
+					rlog.Error("Error reverting ticket status", "ticketID", ticketID, "err", err)
+				}
+			}
+			// Remove the reservation data
+			delete(buyTicketData, reserveKey)
+			rlog.Info("Reverted ticket statuses due to no payment", "billLinkID", createBillRes.LinkID)
+		} else {
+			rlog.Info("Payment received", "billLinkID", createBillRes.LinkID)
+		}
+	}()
+
 	// Commit the transaction if all tickets are deleted successfully
 	if err := tx.Commit(ctx); err != nil {
 		rlog.Error("failed to commit your transaction", "err", err.Error())
 		return nil, eb.Cause(err).Code(errs.DataLoss).Msg("failed to commit your transaction").Err()
 	}
-
-	for i := 0; i < req.TicketAmount; i++ {
-		ticketsHashesCount[ticketHashes[i]]++
-	}
-
-	log.Println("ticketsHashesCount", ticketsHashesCount)
-	log.Println("length", len(ticketsHashesCount))
+	committed = true
 
 	return &BaseResponse[BuyTicketResponse]{
 		Data: BuyTicketResponse{
 			BuyTicketData{
-				EventID:      buyTicketData[fmt.Sprintf("reserve:%d", createBillRes.LinkID)].EventID,
+				EventID:      buyTicketData[reserveKey].EventID,
 				TicketAmount: req.TicketAmount,
 				Attendees:    req.Attendees,
-				TicketIDs:    buyTicketData[fmt.Sprintf("reserve:%d", createBillRes.LinkID)].TicketIDs,
+				TicketIDs:    buyTicketData[reserveKey].TicketIDs,
 			},
 			CreateBillResponse{
 				LinkID:                createBillRes.LinkID,
