@@ -2,8 +2,9 @@ package mail
 
 import (
 	"fmt"
-	"github.com/skip2/go-qrcode"
 	"log"
+
+	"github.com/skip2/go-qrcode"
 )
 
 // BaseURL is the base URL for calling the Encore application's API.
@@ -17,7 +18,7 @@ func Environment(name *string) BaseURL {
 		return Local
 	}
 
-	return BaseURL(fmt.Sprintf("https://%s-ggrims-services-xixi.encr.app", name))
+	return BaseURL(fmt.Sprintf("https://%s-ggrims-services-xixi.encr.app", *name))
 }
 
 // genTicketQR generates a QR code in PNG format for the given hash with a predefined URL and returns the PNG byte array.

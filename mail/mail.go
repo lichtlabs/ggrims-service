@@ -2,11 +2,12 @@ package mail
 
 import (
 	"context"
-	"encore.dev/rlog"
 	"fmt"
-	gomail "gopkg.in/gomail.v2"
 	"os"
 	"strconv"
+
+	"encore.dev/rlog"
+	gomail "gopkg.in/gomail.v2"
 )
 
 var SenderName = fmt.Sprintf(
@@ -29,20 +30,22 @@ func SendTicketMail(ctx context.Context, req *SendTicketMailRequest) error {
 	mailer.SetHeader("From", SenderName)
 	mailer.SetHeader("To", req.Recipients...)
 	mailer.SetAddressHeader("Cc", secrets.AdminMail, "Licht Labs Admin")
-	mailer.SetHeader("Subject", "Thanks for your purchase!")
+	mailer.SetHeader("Subject", "Your ticket is here!")
 	mailer.SetBody("text/html", req.Body)
 
+	createdFiles := []string{}
 	if len(req.TicketHashes) > 0 {
 		// write file to temporary dir
-		for _, hash := range req.TicketHashes {
+		for i, hash := range req.TicketHashes {
 			qrcode := genTicketQR(hash)
-			err := os.WriteFile(fmt.Sprintf("/tmp/%s.png", hash), qrcode, 0644)
+			filename := fmt.Sprintf("/tmp/%s-%d.png", req.Recipients[0], i)
+			err := os.WriteFile(filename, qrcode, 0644)
 			if err != nil {
 				rlog.Error("Failed to write qrcode to file", "error", err)
 				return err
 			}
-			mailer.Attach(fmt.Sprintf("/tmp/%s.png", hash))
-
+			mailer.Attach(filename)
+			createdFiles = append(createdFiles, filename)
 		}
 	}
 
@@ -66,6 +69,12 @@ func SendTicketMail(ctx context.Context, req *SendTicketMailRequest) error {
 	}
 
 	// delete all temporary created files
+	for _, file := range createdFiles {
+		err := os.Remove(file)
+		if err != nil {
+			rlog.Error("Failed to delete temporary file", "error", err)
+		}
+	}
 
 	return nil
 }

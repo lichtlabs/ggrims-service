@@ -6,15 +6,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"github.com/lichtlabs/ggrims-service/mail"
-	mailtempl "github.com/lichtlabs/ggrims-service/mail/template"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
-	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/lichtlabs/ggrims-service/mail"
+	mailtempl "github.com/lichtlabs/ggrims-service/mail/template"
 
 	"encore.dev/beta/errs"
 	"encore.dev/rlog"
@@ -26,7 +26,7 @@ type CreateBillRequest struct {
 	Title                 string    `json:"title"`
 	Amount                int       `json:"amount"`
 	Type                  string    `json:"type"`
-	ExpiredDate           time.Time `json:"expired_date"`
+	ExpiredDate           string `json:"expired_date"`
 	RedirectURL           string    `json:"redirect_url"`
 	IsAddressRequired     int       `json:"is_address_required"`
 	IsPhoneNumberRequired int       `json:"is_phone_number_required"`
@@ -59,7 +59,7 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 	data.Set("title", req.Title)
 	data.Set("amount", fmt.Sprintf("%d", req.Amount))
 	data.Set("type", req.Type)
-	data.Set("expired_date", req.ExpiredDate.Format("2006-01-02"))
+	data.Set("expired_date", req.ExpiredDate)
 	data.Set("redirect_url", req.RedirectURL)
 	data.Set("is_address_required", fmt.Sprintf("%d", req.IsAddressRequired))
 	data.Set("is_phone_number_required", fmt.Sprintf("%d", req.IsPhoneNumberRequired))
@@ -159,6 +159,7 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 	}(dbTX, ctx)
 
 	dataFormValue := req.PostFormValue("data")
+	log.Println("dataFormValue", dataFormValue)
 
 	err = json.Unmarshal([]byte(dataFormValue), &tx)
 	if err != nil {
@@ -187,6 +188,11 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 	switch tx.Status {
 	case "SUCCESSFUL":
 		paymentData, err := json.Marshal(tx)
+		if err != nil {
+			rlog.Error("Error: Error marshalling payment data: ", err.Error())
+			return
+		}
+
 		_, err = query.InsertPayment(ctx, db.InsertPaymentParams{
 			EventID:    buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].EventID,
 			Data:       paymentData,
@@ -222,8 +228,13 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 				TicketID: ticketID,
 			})
 
-			for j, _ := range buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].Attendees {
+			for j := range buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].Attendees {
 				attendeeData, err := json.Marshal(buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].Attendees[j])
+				if err != nil {
+					rlog.Error("Error: Error marshalling attendee data: ", err.Error())
+					return
+				}
+
 				_, err = query.InsertAttendee(ctx, db.InsertAttendeeParams{
 					EventID:  buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].EventID,
 					TicketID: ticketID,
@@ -268,17 +279,15 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 		}
 
 		delete(buyTicketData, fmt.Sprintf("reserve:%d", tx.BillLinkID))
-		break
 	case "FAILED":
 		rollbackTickets(tx.Status)
-		break
 	case "CANCELLED":
 		rollbackTickets(tx.Status)
-		break
-	default:
-		log.Println("Error: Unknown payment status")
+	case "EXPIRED":
 		rollbackTickets(tx.Status)
-		break
+	default:
+		rlog.Error("Error: Unknown payment status", "status", tx.Status)
+		rollbackTickets(tx.Status)
 	}
 
 	// Commit the transaction if all tickets are deleted successfully

@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"log"
 	"math/rand"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"encore.dev/beta/errs"
 	"encore.dev/rlog"
@@ -310,11 +311,17 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 
 	// call payments
 	price, err := strconv.Atoi(availableTickets[0].Price)
+	if err != nil {
+		return nil, eb.Cause(err).Code(errs.Internal).Msg("An error occurred while converting price to int").Err()
+	}
+
+	// create bill
 	createBillRes, err := CreateBill(ctx, &CreateBillRequest{
-		Title:       availableTickets[0].Name,
-		Amount:      req.TicketAmount*price + (req.TicketAmount * 1000),
-		Type:        "SINGLE",
-		ExpiredDate: time.Now().Add(48 * time.Hour),
+		Title:  availableTickets[0].Name,
+		Amount: req.TicketAmount*price + (req.TicketAmount * 1000),
+		Type:   "SINGLE",
+		ExpiredDate: time.Now().Add(5 * time.Minute).Format("2006-01-02 15:04"),
+		// ExpiredDate: time.Now().Add(15 * time.Second).Format("2006-01-02 15:04"),
 	})
 	if err != nil {
 		return nil, eb.Cause(err).Code(errs.Internal).Msg("An error occurred while creating a bill").Err()
