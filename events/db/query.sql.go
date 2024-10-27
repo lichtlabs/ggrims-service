@@ -217,26 +217,6 @@ func (q *Queries) GetPayment(ctx context.Context, id pgtype.UUID) (Payment, erro
 	return i, err
 }
 
-const getPaymentByBillLinkID = `-- name: GetPaymentByBillLinkID :one
-SELECT id, event_id, data, name, email, bill_link_id, created_at, updated_at FROM payment WHERE bill_link_id = $1 LIMIT 1
-`
-
-func (q *Queries) GetPaymentByBillLinkID(ctx context.Context, billLinkID int32) (Payment, error) {
-	row := q.db.QueryRow(ctx, getPaymentByBillLinkID, billLinkID)
-	var i Payment
-	err := row.Scan(
-		&i.ID,
-		&i.EventID,
-		&i.Data,
-		&i.Name,
-		&i.Email,
-		&i.BillLinkID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const getTicket = `-- name: GetTicket :one
 SELECT
     id, event_id, name, description, price, benefits, status, created_at, updated_at, hash, min, max

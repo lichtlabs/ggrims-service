@@ -214,9 +214,6 @@ SELECT
 FROM payment e
 WHERE e.id = $1;
 
--- name: GetPaymentByBillLinkID :one
-SELECT * FROM payment WHERE bill_link_id = $1 LIMIT 1;
-
 -- name: CheckPaymentExists :one
 SELECT EXISTS(SELECT 1 FROM payment WHERE bill_link_id = $1) AS payment_exists;
 
