@@ -73,7 +73,7 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 	data.Set("amount", fmt.Sprintf("%d", req.Amount))
 	data.Set("type", req.Type)
 	data.Set("expired_date", req.ExpiredDate.Format("2006-01-02 15:04"))
-	data.Set("redirect_url", req.RedirectURL)
+	// data.Set("redirect_url", req.RedirectURL)
 	data.Set("is_address_required", fmt.Sprintf("%d", req.IsAddressRequired))
 	data.Set("is_phone_number_required", fmt.Sprintf("%d", req.IsPhoneNumberRequired))
 
@@ -113,8 +113,10 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 	var jsonResponse CreateBillResponse
 	err = json.Unmarshal(body, &jsonResponse)
 	if err != nil {
+		rlog.Info("Error unmarshalling JSON:", "err", err)
 		return nil, err
 	}
+	rlog.Info("CreateBillResponse: ", "jsonResponse", jsonResponse)
 
 	return &CreateBillResponse{
 		LinkID:                jsonResponse.LinkID,
