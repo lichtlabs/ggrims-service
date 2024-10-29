@@ -26,6 +26,7 @@ var secrets struct {
 	FlipApiBaseEndpoint string `json:"flip_api_base_endpoint"`
 	FlipValidationToken string `json:"flip_validation_token"`
 	FlipApiSecretKey    string `json:"flip_api_secret_key"`
+	ProxyBaseURL        string `json:"proxy_base_url"`
 }
 
 type CreateEventRequest struct {

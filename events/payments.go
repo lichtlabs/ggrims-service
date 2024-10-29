@@ -26,7 +26,7 @@ type CreateBillRequest struct {
 	Title                 string    `json:"title"`
 	Amount                int       `json:"amount"`
 	Type                  string    `json:"type"`
-	ExpiredDate           string `json:"expired_date"`
+	ExpiredDate           string 	`json:"expired_date"`
 	RedirectURL           string    `json:"redirect_url"`
 	IsAddressRequired     int       `json:"is_address_required"`
 	IsPhoneNumberRequired int       `json:"is_phone_number_required"`
@@ -54,7 +54,16 @@ type CreateBillResponse struct {
 func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillResponse, error) {
 	eb := errs.B()
 
-	createBillEndpoint := fmt.Sprintf("%s/pwf/bill", secrets.FlipApiBaseEndpoint)
+	// Use either direct Flip URL or proxy URL based on configuration
+	var createBillEndpoint string
+	if secrets.ProxyBaseURL != "" {
+		// Use proxy URL
+		createBillEndpoint = fmt.Sprintf("%s/flip/pwf/bill", secrets.ProxyBaseURL)
+	} else {
+		// Use direct Flip URL
+		createBillEndpoint = fmt.Sprintf("%s/pwf/bill", secrets.FlipApiBaseEndpoint)
+	}
+
 	data := url.Values{}
 	data.Set("title", req.Title)
 	data.Set("amount", fmt.Sprintf("%d", req.Amount))
