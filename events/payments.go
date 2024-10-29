@@ -65,11 +65,14 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 		createBillEndpoint = fmt.Sprintf("%s/pwf/bill", secrets.FlipApiBaseEndpoint)
 	}
 
+	// log the format of expired date
+	rlog.Info("ExpiredDate: ", "format", req.ExpiredDate.Format("2006-01-02 15:04:05"))
+
 	data := url.Values{}
 	data.Set("title", req.Title)
 	data.Set("amount", fmt.Sprintf("%d", req.Amount))
 	data.Set("type", req.Type)
-	// data.Set("expired_date", req.ExpiredDate.Format("2006-01-02 15:04:05"))
+	data.Set("expired_date", req.ExpiredDate.Format("2006-01-02 15:04:05"))
 	data.Set("redirect_url", req.RedirectURL)
 	data.Set("is_address_required", fmt.Sprintf("%d", req.IsAddressRequired))
 	data.Set("is_phone_number_required", fmt.Sprintf("%d", req.IsPhoneNumberRequired))
