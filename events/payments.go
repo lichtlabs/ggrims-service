@@ -51,7 +51,7 @@ type CreateBillResponse struct {
 
 // CreateBill creates a new bill with the given request parameters and returns the response or an error.
 //
-//encore:api public method=POST path=/payments
+//encore:api private method=POST path=/payments
 func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillResponse, error) {
 	eb := errs.B()
 
@@ -65,14 +65,21 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 		createBillEndpoint = fmt.Sprintf("%s/pwf/bill", secrets.FlipApiBaseEndpoint)
 	}
 
+	expiredDate := req.ExpiredDate.Format("2006-01-02 15:04")
 	// log the format of expired date
-	rlog.Info("ExpiredDate: ", "format", req.ExpiredDate.Format("2006-01-02 15:04:05"))
+	rlog.Info("ExpiredDate: ", "format", expiredDate)
+
+	// check if the expired date is YYYY-MM-DD HH:MM:SS
+	// remove the last 3 characters
+	if len(expiredDate) > 16 {
+		expiredDate = expiredDate[:len(expiredDate)-3]
+	}
 
 	data := url.Values{}
 	data.Set("title", req.Title)
 	data.Set("amount", fmt.Sprintf("%d", req.Amount))
 	data.Set("type", req.Type)
-	data.Set("expired_date", req.ExpiredDate.Format("2006-01-02 15:04"))
+	data.Set("expired_date", expiredDate)
 	// data.Set("redirect_url", req.RedirectURL)
 	data.Set("is_address_required", fmt.Sprintf("%d", req.IsAddressRequired))
 	data.Set("is_phone_number_required", fmt.Sprintf("%d", req.IsPhoneNumberRequired))
