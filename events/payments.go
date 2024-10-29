@@ -50,7 +50,7 @@ type CreateBillResponse struct {
 
 // CreateBill creates a new bill with the given request parameters and returns the response or an error.
 //
-//encore:api private method=POST path=/payments
+//encore:api public method=POST path=/payments
 func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillResponse, error) {
 	eb := errs.B()
 
