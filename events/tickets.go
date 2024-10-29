@@ -317,11 +317,16 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 	}
 
 	// create bill
+	jakartaLoc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		return nil, eb.Cause(err).Code(errs.Internal).Msg("failed to load Jakarta timezone").Err()
+	}
+
 	createBillRes, err := CreateBill(ctx, &CreateBillRequest{
 		Title:  availableTickets[0].Name,
 		Amount: req.TicketAmount*price + (req.TicketAmount * 1000),
 		Type:   "SINGLE",
-		ExpiredDate:           time.Now().Add(7 * time.Minute),
+		ExpiredDate:           time.Now().In(jakartaLoc).Add(7 * time.Minute),
 		IsAddressRequired:     0,
 		IsPhoneNumberRequired: 0,
 	})
