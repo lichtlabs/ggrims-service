@@ -59,7 +59,7 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 	var createBillEndpoint string
 	if secrets.ProxyBaseURL != "" {
 		// Use proxy URL
-		createBillEndpoint = fmt.Sprintf("%s/flip/pwf/bill", secrets.ProxyBaseURL)
+		createBillEndpoint = fmt.Sprintf("%s/api/v2/pwf/bill", secrets.ProxyBaseURL)
 	} else {
 		// Use direct Flip URL
 		createBillEndpoint = fmt.Sprintf("%s/pwf/bill", secrets.FlipApiBaseEndpoint)
