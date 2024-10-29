@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lichtlabs/ggrims-service/mail"
@@ -26,7 +27,7 @@ type CreateBillRequest struct {
 	Title                 string    `json:"title"`
 	Amount                int       `json:"amount"`
 	Type                  string    `json:"type"`
-	ExpiredDate           string 	`json:"expired_date"`
+	ExpiredDate           time.Time 	`json:"expired_date"`
 	RedirectURL           string    `json:"redirect_url"`
 	IsAddressRequired     int       `json:"is_address_required"`
 	IsPhoneNumberRequired int       `json:"is_phone_number_required"`
@@ -68,7 +69,7 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 	data.Set("title", req.Title)
 	data.Set("amount", fmt.Sprintf("%d", req.Amount))
 	data.Set("type", req.Type)
-	data.Set("expired_date", req.ExpiredDate)
+	data.Set("expired_date", req.ExpiredDate.Format("2006-01-02"))
 	data.Set("redirect_url", req.RedirectURL)
 	data.Set("is_address_required", fmt.Sprintf("%d", req.IsAddressRequired))
 	data.Set("is_phone_number_required", fmt.Sprintf("%d", req.IsPhoneNumberRequired))

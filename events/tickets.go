@@ -321,7 +321,7 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 		Title:  availableTickets[0].Name,
 		Amount: req.TicketAmount*price + (req.TicketAmount * 1000),
 		Type:   "SINGLE",
-		ExpiredDate:           time.Now().Add(7 * time.Minute).Format("2006-01-02 15:04"),
+		ExpiredDate:           time.Now().Add(7 * time.Minute),
 		IsAddressRequired:     0,
 		IsPhoneNumberRequired: 0,
 	})
