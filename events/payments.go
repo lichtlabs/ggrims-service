@@ -73,6 +73,9 @@ func CreateBill(ctx context.Context, req *CreateBillRequest) (*CreateBillRespons
 	data.Set("is_address_required", fmt.Sprintf("%d", req.IsAddressRequired))
 	data.Set("is_phone_number_required", fmt.Sprintf("%d", req.IsPhoneNumberRequired))
 
+	// print request data
+	rlog.Info("Request data:", "data", data.Encode())
+
 	encodedCredentials := base64.StdEncoding.EncodeToString([]byte(secrets.FlipApiSecretKey + ":"))
 	reqs, err := http.NewRequest(http.MethodPost, createBillEndpoint, bytes.NewBufferString(data.Encode()))
 	if err != nil {
