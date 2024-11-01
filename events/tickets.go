@@ -365,7 +365,7 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 	// Start a goroutine to handle the timeout
 	go func() {
 		rlog.Info("Checking payment existence", "billLinkID", createBillRes.LinkID)
-		time.Sleep(7 * time.Minute)
+		time.Sleep(14 * time.Minute)
 		
 		// Check if payment exists
 		paymentExists, err := query.CheckPaymentExists(context.Background(), int32(createBillRes.LinkID))
