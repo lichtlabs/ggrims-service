@@ -27,7 +27,7 @@ type CreateBillRequest struct {
 	Title                 string    `json:"title"`
 	Amount                int       `json:"amount"`
 	Type                  string    `json:"type"`
-	ExpiredDate           time.Time 	`json:"expired_date"`
+	ExpiredDate           time.Time `json:"expired_date"`
 	RedirectURL           string    `json:"redirect_url"`
 	IsAddressRequired     int       `json:"is_address_required"`
 	IsPhoneNumberRequired int       `json:"is_phone_number_required"`
@@ -224,7 +224,7 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		_, err = query.InsertPayment(ctx, db.InsertPaymentParams{
+		paymentID, err := query.InsertPayment(ctx, db.InsertPaymentParams{
 			EventID:    buyTicketData[fmt.Sprintf("reserve:%d", tx.BillLinkID)].EventID,
 			Data:       paymentData,
 			Name:       tx.SenderName,
@@ -234,6 +234,35 @@ func Callback(res http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			rlog.Error("Error: Error inserting payment: ", err.Error())
 			return
+		}
+
+		// Track referral code usage if a code was used
+		reserveKey := fmt.Sprintf("reserve:%d", tx.BillLinkID)
+		if buyTicketData[reserveKey].ReferralCode != "" {
+			code := buyTicketData[reserveKey].ReferralCode
+			refCode, err := query.GetReferralCodeByCode(ctx, code)
+			if err != nil {
+				rlog.Error("Error getting referral code by code:", err)
+				return
+			}
+
+			// Create referral usage record
+			_, err = query.CreateReferralUsage(ctx, db.CreateReferralUsageParams{
+				ReferralCodeID: refCode.ID,
+				PaymentID:      paymentID,
+				DiscountAmount: refCode.DiscountPercentage,
+			})
+			if err != nil {
+				rlog.Error("Error creating referral usage record:", err)
+				return
+			}
+
+			// Update referral code usage count
+			err = query.UpdateReferralCodeUsage(ctx, refCode.ID)
+			if err != nil {
+				rlog.Error("Error updating referral code usage count:", err)
+				return
+			}
 		}
 
 		ticketPrice := 0

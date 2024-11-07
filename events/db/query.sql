@@ -231,3 +231,31 @@ FROM payment e
 ORDER BY @order_by
 OFFSET @offsets
 LIMIT @limits;
+
+-- name: CreateReferralCode :one
+INSERT INTO referral_code (
+    code, discount_percentage, max_uses, valid_until
+) VALUES (
+    $1, $2, $3, $4
+) RETURNING *;
+
+-- name: GetReferralCodeByCode :one
+SELECT * FROM referral_code WHERE code = $1;
+
+-- name: UpdateReferralCodeUsage :exec
+UPDATE referral_code 
+SET current_uses = current_uses + 1,
+    updated_at = NOW()
+WHERE id = $1;
+
+-- name: CreateReferralUsage :one
+INSERT INTO referral_usage (
+    referral_code_id, payment_id, discount_amount
+) VALUES (
+    $1, $2, $3
+) RETURNING *;
+
+-- name: GetReferralUsageCount :one
+SELECT COUNT(*) 
+FROM referral_usage 
+WHERE referral_code_id = $1;

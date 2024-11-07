@@ -128,6 +128,26 @@ type Payment struct {
 	UpdatedAt  pgtype.Timestamptz
 }
 
+type ReferralCode struct {
+	ID                 pgtype.UUID
+	Code               string
+	DiscountPercentage int32
+	MaxUses            int32
+	CurrentUses        int32
+	ValidFrom          pgtype.Timestamptz
+	ValidUntil         pgtype.Timestamptz
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+type ReferralUsage struct {
+	ID             pgtype.UUID
+	ReferralCodeID pgtype.UUID
+	PaymentID      pgtype.UUID
+	DiscountAmount int32
+	CreatedAt      pgtype.Timestamptz
+}
+
 type Ticket struct {
 	ID          pgtype.UUID
 	EventID     pgtype.UUID

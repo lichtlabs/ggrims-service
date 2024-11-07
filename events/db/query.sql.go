@@ -38,6 +38,70 @@ func (q *Queries) CheckPaymentExists(ctx context.Context, billLinkID int32) (boo
 	return payment_exists, err
 }
 
+const createReferralCode = `-- name: CreateReferralCode :one
+INSERT INTO referral_code (
+    code, discount_percentage, max_uses, valid_until
+) VALUES (
+    $1, $2, $3, $4
+) RETURNING id, code, discount_percentage, max_uses, current_uses, valid_from, valid_until, created_at, updated_at
+`
+
+type CreateReferralCodeParams struct {
+	Code               string
+	DiscountPercentage int32
+	MaxUses            int32
+	ValidUntil         pgtype.Timestamptz
+}
+
+func (q *Queries) CreateReferralCode(ctx context.Context, arg CreateReferralCodeParams) (ReferralCode, error) {
+	row := q.db.QueryRow(ctx, createReferralCode,
+		arg.Code,
+		arg.DiscountPercentage,
+		arg.MaxUses,
+		arg.ValidUntil,
+	)
+	var i ReferralCode
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.DiscountPercentage,
+		&i.MaxUses,
+		&i.CurrentUses,
+		&i.ValidFrom,
+		&i.ValidUntil,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createReferralUsage = `-- name: CreateReferralUsage :one
+INSERT INTO referral_usage (
+    referral_code_id, payment_id, discount_amount
+) VALUES (
+    $1, $2, $3
+) RETURNING id, referral_code_id, payment_id, discount_amount, created_at
+`
+
+type CreateReferralUsageParams struct {
+	ReferralCodeID pgtype.UUID
+	PaymentID      pgtype.UUID
+	DiscountAmount int32
+}
+
+func (q *Queries) CreateReferralUsage(ctx context.Context, arg CreateReferralUsageParams) (ReferralUsage, error) {
+	row := q.db.QueryRow(ctx, createReferralUsage, arg.ReferralCodeID, arg.PaymentID, arg.DiscountAmount)
+	var i ReferralUsage
+	err := row.Scan(
+		&i.ID,
+		&i.ReferralCodeID,
+		&i.PaymentID,
+		&i.DiscountAmount,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const deleteAttendee = `-- name: DeleteAttendee :exec
 DELETE FROM attendee
 WHERE id = $1
@@ -215,6 +279,40 @@ func (q *Queries) GetPayment(ctx context.Context, id pgtype.UUID) (Payment, erro
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getReferralCodeByCode = `-- name: GetReferralCodeByCode :one
+SELECT id, code, discount_percentage, max_uses, current_uses, valid_from, valid_until, created_at, updated_at FROM referral_code WHERE code = $1
+`
+
+func (q *Queries) GetReferralCodeByCode(ctx context.Context, code string) (ReferralCode, error) {
+	row := q.db.QueryRow(ctx, getReferralCodeByCode, code)
+	var i ReferralCode
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.DiscountPercentage,
+		&i.MaxUses,
+		&i.CurrentUses,
+		&i.ValidFrom,
+		&i.ValidUntil,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getReferralUsageCount = `-- name: GetReferralUsageCount :one
+SELECT COUNT(*) 
+FROM referral_usage 
+WHERE referral_code_id = $1
+`
+
+func (q *Queries) GetReferralUsageCount(ctx context.Context, referralCodeID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getReferralUsageCount, referralCodeID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const getTicket = `-- name: GetTicket :one
@@ -753,6 +851,18 @@ func (q *Queries) UpdatePayment(ctx context.Context, arg UpdatePaymentParams) er
 		arg.BillLinkID,
 		arg.PaymentID,
 	)
+	return err
+}
+
+const updateReferralCodeUsage = `-- name: UpdateReferralCodeUsage :exec
+UPDATE referral_code 
+SET current_uses = current_uses + 1,
+    updated_at = NOW()
+WHERE id = $1
+`
+
+func (q *Queries) UpdateReferralCodeUsage(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, updateReferralCodeUsage, id)
 	return err
 }
 

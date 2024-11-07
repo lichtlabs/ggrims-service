@@ -267,6 +267,7 @@ func ListDistinctTickets(ctx context.Context, id uuid.UUID) (*BaseResponse[[]Lis
 type BuyTicketRequest struct {
 	TicketName   string               `json:"ticket_name"`
 	TicketAmount int                  `json:"ticket_amount"`
+	ReferralCode string               `json:"referral_code"`
 	Attendees    []*map[string]string `json:"attendees"`
 }
 
@@ -310,22 +311,36 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 		return nil, eb.Cause(err).Code(errs.Internal).Msg("An error occurred while retrieving available tickets").Err()
 	}
 
-	// call payments
 	price, err := strconv.Atoi(availableTickets[0].Price)
 	if err != nil {
-		return nil, eb.Cause(err).Code(errs.Internal).Msg("An error occurred while converting price to int").Err()
+		return nil, eb.Cause(err).Code(errs.Internal).Msg("failed to convert price to int").Err()
 	}
 
-	// create bill
+	// Calculate price with referral code if provided
+	var discountAmount int
+	if req.ReferralCode != "" {
+		refCode, err := validateReferralCode(ctx, req.ReferralCode)
+		if err != nil {
+			return nil, eb.Cause(err).Code(errs.InvalidArgument).Msg("invalid referral code").Err()
+		}
+
+		if refCode != nil {
+			totalAmount := req.TicketAmount * price
+			discountAmount = (totalAmount * int(refCode.DiscountPercentage)) / 100
+			price = totalAmount - discountAmount
+		}
+	}
+
+	// Create bill with discounted price if applicable
 	jakartaLoc, err := time.LoadLocation("Asia/Jakarta")
 	if err != nil {
 		return nil, eb.Cause(err).Code(errs.Internal).Msg("failed to load Jakarta timezone").Err()
 	}
 
 	createBillRes, err := CreateBill(ctx, &CreateBillRequest{
-		Title:  availableTickets[0].Name,
-		Amount: req.TicketAmount*price + (req.TicketAmount * 1000),
-		Type:   "SINGLE",
+		Title:                 availableTickets[0].Name,
+		Amount:                price + (req.TicketAmount * 1000), // Adding fixed fee
+		Type:                  "SINGLE",
 		ExpiredDate:           time.Now().In(jakartaLoc).Add(7 * time.Minute),
 		IsAddressRequired:     0,
 		IsPhoneNumberRequired: 0,
@@ -360,13 +375,14 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 			Bytes: id,
 			Valid: true,
 		},
+		ReferralCode: req.ReferralCode,
 	}
 
 	// Start a goroutine to handle the timeout
 	go func() {
 		rlog.Info("Checking payment existence", "billLinkID", createBillRes.LinkID)
 		time.Sleep(7 * time.Minute)
-		
+
 		// Check if payment exists
 		paymentExists, err := query.CheckPaymentExists(context.Background(), int32(createBillRes.LinkID))
 		if err != nil {
@@ -434,6 +450,7 @@ type BuyTicketData struct {
 	Attendees    []*map[string]string `json:"attendees"`
 	TicketIDs    []pgtype.UUID        `json:"ticket_ids"`
 	TicketHashes []string             `json:"ticket_hashes"`
+	ReferralCode string               `json:"referral_code"`
 }
 
 // buyTicketData is a map that stores temporary BuyTicketData keyed by a unique payment link_id identifier.
