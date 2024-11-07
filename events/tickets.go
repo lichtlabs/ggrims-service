@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -366,6 +367,8 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 
 	// store buy ticket data
 	reserveKey := fmt.Sprintf("reserve:%d", createBillRes.LinkID)
+	var buyTicketDataMutex sync.Mutex
+	buyTicketDataMutex.Lock()
 	buyTicketData[reserveKey] = BuyTicketData{
 		TicketAmount: int(availableTickets[0].Count),
 		Attendees:    req.Attendees,
@@ -377,6 +380,7 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 		},
 		ReferralCode: req.ReferralCode,
 	}
+	buyTicketDataMutex.Unlock()
 
 	// Start a goroutine to handle the timeout
 	go func() {
@@ -402,7 +406,9 @@ func BuyTickets(ctx context.Context, id uuid.UUID, req *BuyTicketRequest) (*Base
 				}
 			}
 			// Remove the reservation data
+			buyTicketDataMutex.Lock()
 			delete(buyTicketData, reserveKey)
+			buyTicketDataMutex.Unlock()
 			rlog.Info("Reverted ticket statuses due to no payment", "billLinkID", createBillRes.LinkID)
 		} else {
 			rlog.Info("Payment received", "billLinkID", createBillRes.LinkID)
@@ -455,3 +461,5 @@ type BuyTicketData struct {
 
 // buyTicketData is a map that stores temporary BuyTicketData keyed by a unique payment link_id identifier.
 var buyTicketData = map[string]BuyTicketData{}
+
+const FixedFee = 1000
