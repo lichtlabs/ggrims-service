@@ -204,20 +204,9 @@ FROM payment e
 WHERE e.id = $1
 `
 
-type GetPaymentRow struct {
-	ID         pgtype.UUID
-	EventID    pgtype.UUID
-	Data       []byte
-	Name       string
-	Email      string
-	BillLinkID int32
-	CreatedAt  pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
-}
-
-func (q *Queries) GetPayment(ctx context.Context, id pgtype.UUID) (GetPaymentRow, error) {
+func (q *Queries) GetPayment(ctx context.Context, id pgtype.UUID) (Payment, error) {
 	row := q.db.QueryRow(ctx, getPayment, id)
-	var i GetPaymentRow
+	var i Payment
 	err := row.Scan(
 		&i.ID,
 		&i.EventID,
@@ -630,26 +619,15 @@ type ListPaymentParams struct {
 	Limits  int32
 }
 
-type ListPaymentRow struct {
-	ID         pgtype.UUID
-	EventID    pgtype.UUID
-	Data       []byte
-	Name       string
-	Email      string
-	BillLinkID int32
-	CreatedAt  pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
-}
-
-func (q *Queries) ListPayment(ctx context.Context, arg ListPaymentParams) ([]ListPaymentRow, error) {
+func (q *Queries) ListPayment(ctx context.Context, arg ListPaymentParams) ([]Payment, error) {
 	rows, err := q.db.Query(ctx, listPayment, arg.OrderBy, arg.Offsets, arg.Limits)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListPaymentRow
+	var items []Payment
 	for rows.Next() {
-		var i ListPaymentRow
+		var i Payment
 		if err := rows.Scan(
 			&i.ID,
 			&i.EventID,

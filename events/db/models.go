@@ -119,16 +119,14 @@ type Event struct {
 }
 
 type Payment struct {
-	ID             pgtype.UUID
-	EventID        pgtype.UUID
-	Data           []byte
-	Name           string
-	Email          string
-	BillLinkID     int32
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	OriginalAmount pgtype.Int4
-	DiscountAmount pgtype.Int4
+	ID         pgtype.UUID
+	EventID    pgtype.UUID
+	Data       []byte
+	Name       string
+	Email      string
+	BillLinkID int32
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 }
 
 type Ticket struct {

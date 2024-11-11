@@ -192,17 +192,20 @@ func ListEvents(ctx context.Context, params *ListQuery) (*BaseResponse[[]Event],
 			return nil, eb.Code(errs.Internal).Msg("An error occurred while decoding ticket inputs").Err()
 		}
 
-		events = append(events, Event{
-			ID:             data.ID,
-			Name:           data.Name,
-			Description:    data.Description,
-			Location:       data.Location,
-			EventStartDate: data.EventStartDate,
-			EventEndDate:   data.EventEndDate,
-			CreatedAt:      data.CreatedAt,
-			UpdatedAt:      data.UpdatedAt,
-			TicketInputs:   ticketInputs,
-		})
+		if !data.Disabled.Bool {
+			events = append(events, Event{
+				ID:             data.ID,
+				Name:           data.Name,
+				Description:    data.Description,
+				Location:       data.Location,
+				EventStartDate: data.EventStartDate,
+				EventEndDate:   data.EventEndDate,
+				CreatedAt:      data.CreatedAt,
+				UpdatedAt:      data.UpdatedAt,
+				TicketInputs:   ticketInputs,
+			})
+		}
+
 	}
 
 	return &BaseResponse[[]Event]{
@@ -224,17 +227,18 @@ func ListUpcomingEvents(ctx context.Context) (*BaseResponse[[]Event], error) {
 
 	events := make([]Event, 0)
 	for _, data := range data {
-		events = append(events, Event{
-			ID:             data.ID,
-			Name:           data.Name,
-			Description:    data.Description,
-			Location:       data.Location,
-			EventStartDate: data.EventStartDate,
-			EventEndDate:   data.EventEndDate,
-			Disabled:       data.Disabled.Bool,
-			CreatedAt:      data.CreatedAt,
-			UpdatedAt:      data.UpdatedAt,
-		})
+		if !data.Disabled.Bool {
+			events = append(events, Event{
+				ID:             data.ID,
+				Name:           data.Name,
+				Description:    data.Description,
+				Location:       data.Location,
+				EventStartDate: data.EventStartDate,
+				EventEndDate:   data.EventEndDate,
+				CreatedAt:      data.CreatedAt,
+				UpdatedAt:      data.UpdatedAt,
+			})
+		}
 	}
 
 	return &BaseResponse[[]Event]{
