@@ -115,17 +115,20 @@ type Event struct {
 	EventEndDate   pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	Disabled       pgtype.Bool
 }
 
 type Payment struct {
-	ID         pgtype.UUID
-	EventID    pgtype.UUID
-	Data       []byte
-	Name       string
-	Email      string
-	BillLinkID int32
-	CreatedAt  pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
+	ID             pgtype.UUID
+	EventID        pgtype.UUID
+	Data           []byte
+	Name           string
+	Email          string
+	BillLinkID     int32
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	OriginalAmount pgtype.Int4
+	DiscountAmount pgtype.Int4
 }
 
 type Ticket struct {

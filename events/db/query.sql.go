@@ -150,6 +150,7 @@ SELECT
     e.location,
     e.event_start_date,
     e.event_end_date,
+    e.disabled,
     e.created_at,
     e.updated_at,
     eti.inputs as ticket_inputs
@@ -165,6 +166,7 @@ type GetEventRow struct {
 	Location       string
 	EventStartDate pgtype.Timestamptz
 	EventEndDate   pgtype.Timestamptz
+	Disabled       pgtype.Bool
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
 	TicketInputs   []byte
@@ -180,6 +182,7 @@ func (q *Queries) GetEvent(ctx context.Context, id pgtype.UUID) (GetEventRow, er
 		&i.Location,
 		&i.EventStartDate,
 		&i.EventEndDate,
+		&i.Disabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TicketInputs,
@@ -201,9 +204,20 @@ FROM payment e
 WHERE e.id = $1
 `
 
-func (q *Queries) GetPayment(ctx context.Context, id pgtype.UUID) (Payment, error) {
+type GetPaymentRow struct {
+	ID         pgtype.UUID
+	EventID    pgtype.UUID
+	Data       []byte
+	Name       string
+	Email      string
+	BillLinkID int32
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) GetPayment(ctx context.Context, id pgtype.UUID) (GetPaymentRow, error) {
 	row := q.db.QueryRow(ctx, getPayment, id)
-	var i Payment
+	var i GetPaymentRow
 	err := row.Scan(
 		&i.ID,
 		&i.EventID,
@@ -533,6 +547,7 @@ SELECT
     event.location,
     event.event_start_date,
     event.event_end_date,
+    event.disabled,
     event.created_at,
     event.updated_at,
     ticket_inputs.inputs as ticket_inputs
@@ -556,6 +571,7 @@ type ListEventRow struct {
 	Location       string
 	EventStartDate pgtype.Timestamptz
 	EventEndDate   pgtype.Timestamptz
+	Disabled       pgtype.Bool
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
 	TicketInputs   []byte
@@ -577,6 +593,7 @@ func (q *Queries) ListEvent(ctx context.Context, arg ListEventParams) ([]ListEve
 			&i.Location,
 			&i.EventStartDate,
 			&i.EventEndDate,
+			&i.Disabled,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.TicketInputs,
@@ -613,15 +630,26 @@ type ListPaymentParams struct {
 	Limits  int32
 }
 
-func (q *Queries) ListPayment(ctx context.Context, arg ListPaymentParams) ([]Payment, error) {
+type ListPaymentRow struct {
+	ID         pgtype.UUID
+	EventID    pgtype.UUID
+	Data       []byte
+	Name       string
+	Email      string
+	BillLinkID int32
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) ListPayment(ctx context.Context, arg ListPaymentParams) ([]ListPaymentRow, error) {
 	rows, err := q.db.Query(ctx, listPayment, arg.OrderBy, arg.Offsets, arg.Limits)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Payment
+	var items []ListPaymentRow
 	for rows.Next() {
-		var i Payment
+		var i ListPaymentRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.EventID,
@@ -643,21 +671,33 @@ func (q *Queries) ListPayment(ctx context.Context, arg ListPaymentParams) ([]Pay
 }
 
 const listUpcomingEvent = `-- name: ListUpcomingEvent :many
-SELECT id, name, description, location, event_start_date, event_end_date, created_at, updated_at
+SELECT id, name, description, location, event_start_date, event_end_date, disabled, created_at, updated_at
 FROM event
 WHERE NOW() < event_start_date::date
 ORDER BY event_start_date ASC
 `
 
-func (q *Queries) ListUpcomingEvent(ctx context.Context) ([]Event, error) {
+type ListUpcomingEventRow struct {
+	ID             pgtype.UUID
+	Name           string
+	Description    string
+	Location       string
+	EventStartDate pgtype.Timestamptz
+	EventEndDate   pgtype.Timestamptz
+	Disabled       pgtype.Bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) ListUpcomingEvent(ctx context.Context) ([]ListUpcomingEventRow, error) {
 	rows, err := q.db.Query(ctx, listUpcomingEvent)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Event
+	var items []ListUpcomingEventRow
 	for rows.Next() {
-		var i Event
+		var i ListUpcomingEventRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -665,6 +705,7 @@ func (q *Queries) ListUpcomingEvent(ctx context.Context) ([]Event, error) {
 			&i.Location,
 			&i.EventStartDate,
 			&i.EventEndDate,
+			&i.Disabled,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

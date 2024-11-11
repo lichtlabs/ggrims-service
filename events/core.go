@@ -9,6 +9,7 @@ type Event struct {
 	Location       string              `json:"location"`
 	EventStartDate pgtype.Timestamptz  `json:"event_start_date"`
 	EventEndDate   pgtype.Timestamptz  `json:"event_end_date"`
+	Disabled       bool                `json:"disabled"`
 	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
 	TicketInputs   []*EventTicketInput `json:"inputs"`

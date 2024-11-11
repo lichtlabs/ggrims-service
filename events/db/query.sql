@@ -31,6 +31,7 @@ SELECT
     e.location,
     e.event_start_date,
     e.event_end_date,
+    e.disabled,
     e.created_at,
     e.updated_at,
     eti.inputs as ticket_inputs
@@ -46,6 +47,7 @@ SELECT
     event.location,
     event.event_start_date,
     event.event_end_date,
+    event.disabled,
     event.created_at,
     event.updated_at,
     ticket_inputs.inputs as ticket_inputs
@@ -56,7 +58,7 @@ OFFSET @offsets
 LIMIT @limits;
 
 -- name: ListUpcomingEvent :many
-SELECT id, name, description, location, event_start_date, event_end_date, created_at, updated_at
+SELECT id, name, description, location, event_start_date, event_end_date, disabled, created_at, updated_at
 FROM event
 WHERE NOW() < event_start_date::date
 ORDER BY event_start_date ASC;

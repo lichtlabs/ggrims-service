@@ -231,6 +231,7 @@ func ListUpcomingEvents(ctx context.Context) (*BaseResponse[[]Event], error) {
 			Location:       data.Location,
 			EventStartDate: data.EventStartDate,
 			EventEndDate:   data.EventEndDate,
+			Disabled:       data.Disabled.Bool,
 			CreatedAt:      data.CreatedAt,
 			UpdatedAt:      data.UpdatedAt,
 		})
